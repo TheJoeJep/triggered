@@ -1,0 +1,18 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // A user can read and write to their own user document.
+    match /users/{userId} {
+      allow read, write: if request.auth.uid == userId;
+    }
+
+    // A user can create an organization if their UID is the owner.
+    // A user can read, update, or delete an organization if they are a member.
+    match /organizations/{orgId} {
+      allow create: if request.auth.uid == request.resource.data.owner.uid;
+      allow read, update, delete: if request.auth.uid in resource.data.memberUids;
+    }
+  }
+}

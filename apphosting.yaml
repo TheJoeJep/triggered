@@ -1,0 +1,19 @@
+# Settings to manage and configure a Firebase App Hosting backend.
+# https://firebase.google.com/docs/app-hosting/configure
+
+runConfig:
+  # Increase this value if you'd like to automatically spin up
+  # more instances in response to increased traffic.
+  maxInstances: 1
+# schedule for a periodic job to run every minute
+schedule:
+  # the job's name
+  - job: cron
+    # The scheduler will send an HTTP request to this path
+    # to trigger the job.
+    schedule: "every 1 minutes"
+    http:
+      # The path to the job's handler
+      path: /api/cron
+      # The HTTP method to use
+      method: GET
