@@ -1,0 +1,43 @@
+{
+  "name": "triggered-backend",
+  "version": "1.0.0",
+  "description": "Triggered App Backend - Dynamic trigger system for AI agents",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.19.1",
+    "express": "^4.21.1",
+    "bullmq": "^5.25.4",
+    "ioredis": "^5.4.2",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "passport-google-oauth20": "^2.0.0",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5",
+    "zod": "^3.23.8",
+    "axios": "^1.7.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/passport": "^1.0.16",
+    "@types/passport-jwt": "^4.0.1",
+    "@types/passport-google-oauth20": "^2.0.14",
+    "@types/node": "^22.10.2",
+    "prisma": "^5.19.1",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
+
