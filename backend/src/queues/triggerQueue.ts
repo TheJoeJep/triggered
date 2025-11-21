@@ -115,7 +115,7 @@ export const addTriggerJob = async (trigger: Trigger, existingCount: number = 0)
   }
 
   const jobOptions = {
-    jobId: trigger.id,
+    jobId: `trigger-${trigger.id}-${existingCount}`,
     delay,
     attempts: 3, // Retry 3 times
     backoff: {
