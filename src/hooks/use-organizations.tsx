@@ -1,0 +1,346 @@
+
+"use client";
+
+import { useState, useEffect, useCallback } from 'react';
+import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, writeBatch, query, getDocs, where } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import type { Folder, Trigger, Organization, Member, UserData, TriggerStatus, Schedule } from '@/lib/types';
+import { useAuth } from './use-auth';
+import { useSelectedOrg } from './use-selected-org';
+import axios from 'axios';
+import { add, startOfMinute } from 'date-fns';
+
+// Helper function to generate a secure random string for API keys
+const generateApiKey = (length = 32) => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let apiKey = '';
+  for (let i = 0; i < length; i++) {
+    apiKey += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `ta_${apiKey}`; // "ta" prefix for "triggered app"
+};
+
+
+export function useOrganizations() {
+  const { user, loading: authLoading } = useAuth();
+  const { selectedOrgId, setSelectedOrgId } = useSelectedOrg();
+  
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchOrganizations = useCallback(async () => {
+    if (!user) {
+        setOrganizations([]);
+        setLoading(false);
+        return;
+    }
+    
+    setLoading(true);
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userDocRef);
+
+      if (!userSnap.exists()) {
+          console.warn("User document not found, cannot fetch organizations.");
+          setOrganizations([]);
+          return;
+      }
+
+      const userData = userSnap.data() as UserData;
+      const orgIds = userData.organizations;
+      
+      if (!orgIds || orgIds.length === 0) {
+          setOrganizations([]);
+          return;
+      }
+      
+      const orgPromises = orgIds.map(id => getDoc(doc(db, 'organizations', id)));
+      const orgDocs = await Promise.all(orgPromises);
+      const userOrgs = orgDocs.map(d => d.data() as Organization).filter(Boolean);
+        
+      setOrganizations(userOrgs);
+
+      if (userOrgs.length > 0) {
+          if (!selectedOrgId || !userOrgs.some(o => o.id === selectedOrgId)) {
+              setSelectedOrgId(userOrgs[0].id);
+          }
+      } else {
+          setSelectedOrgId(null);
+      }
+      
+    } catch (error) {
+        console.error("Error fetching organizations:", error);
+        setOrganizations([]);
+    } finally {
+        setLoading(false);
+    }
+  }, [user, selectedOrgId, setSelectedOrgId]);
+
+  useEffect(() => {
+    if (authLoading) {
+      setLoading(true);
+      return;
+    }
+    fetchOrganizations();
+  }, [authLoading, user, fetchOrganizations]);
+
+  const selectedOrganization = organizations.find(o => o.id === selectedOrgId) || null;
+
+  const updateOrganizationData = useCallback(async (orgId: string, updatedData: Partial<Organization>) => {
+      if (!user) return;
+      const orgDocRef = doc(db, 'organizations', orgId);
+      await updateDoc(orgDocRef, updatedData);
+      
+      await fetchOrganizations();
+
+  }, [user, fetchOrganizations]);
+  
+  const addFolder = useCallback(async (name: string) => {
+    if (!user || !selectedOrgId) return;
+    console.log(`[ACTION] Adding folder: ${name}`);
+    const newFolder: Folder = {
+        id: `folder-${Date.now()}`,
+        name,
+        triggers: [],
+    };
+    await updateDoc(doc(db, 'organizations', selectedOrgId), {
+        folders: arrayUnion(newFolder)
+    });
+    
+     setOrganizations(prevOrgs =>
+        prevOrgs.map(org =>
+            org.id === selectedOrgId
+            ? { ...org, folders: [...(org.folders || []), newFolder] }
+            : org
+        )
+    );
+  }, [user, selectedOrgId]);
+
+  const deleteFolder = useCallback(async (folderId: string) => {
+      if (!user || !selectedOrganization) return;
+      console.log(`[ACTION] Deleting folder: ${folderId}`);
+      const folderToDelete = selectedOrganization.folders.find(f => f.id === folderId);
+      if (folderToDelete) {
+        await updateDoc(doc(db, 'organizations', selectedOrganization.id), {
+            folders: arrayRemove(folderToDelete)
+        });
+        await fetchOrganizations();
+      }
+  }, [user, selectedOrganization, fetchOrganizations]);
+  
+  const createOrganization = useCallback(async (name: string) => {
+    if (!user) return;
+    console.log(`[ACTION] Creating organization: ${name}`);
+
+    const batch = writeBatch(db);
+    const newOrgRef = doc(collection(db, "organizations"));
+    const orgId = newOrgRef.id;
+
+    const newMember: Member = {
+      uid: user.uid,
+      email: user.email!,
+      role: 'owner',
+      displayName: user.displayName || user.email!,
+      photoURL: user.photoURL || null,
+    }
+
+    const newOrganization: Organization = {
+      id: orgId,
+      name,
+      owner: {
+        uid: user.uid,
+        photoURL: user.photoURL || null,
+        email: user.email,
+        displayName: user.displayName
+      },
+      members: [newMember],
+      memberUids: [user.uid],
+      folders: [],
+      triggers: [],
+      apiKey: generateApiKey(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
+    };
+    
+    batch.set(newOrgRef, newOrganization);
+
+    const userDocRef = doc(db, "users", user.uid);
+    batch.update(userDocRef, {
+        organizations: arrayUnion(orgId)
+    });
+    
+    await batch.commit();
+    await fetchOrganizations();
+    setSelectedOrgId(orgId);
+  }, [user, fetchOrganizations, setSelectedOrgId]);
+
+  const addTriggerToFolder = useCallback(async (folderId: string, triggerData: Omit<Trigger, 'id' | 'status' | 'runCount' | 'executionHistory'>) => {
+    if (!selectedOrganization) return;
+    
+    let finalSchedule: Schedule = triggerData.schedule;
+    if ((finalSchedule as any).type === 'daily') {
+        finalSchedule = { type: 'interval', amount: 1, unit: 'days' };
+    }
+
+    console.log(`[ACTION] Creating new trigger "${triggerData.name}" in folder ${folderId}`);
+    const newTrigger: Trigger = {
+      ...triggerData,
+      schedule: finalSchedule,
+      id: `trigger-${Date.now()}`,
+      status: "active",
+      runCount: 0,
+      executionHistory: [],
+    };
+    
+    const updatedFolders = selectedOrganization.folders.map(folder => 
+      folder.id === folderId 
+        ? { ...folder, triggers: [...folder.triggers, newTrigger] }
+        : folder
+    );
+    await updateOrganizationData(selectedOrganization.id, { folders: updatedFolders });
+  }, [selectedOrganization, updateOrganizationData]);
+  
+  const addTriggerToOrganization = useCallback(async (triggerData: Omit<Trigger, 'id' | 'status' | 'runCount' | 'executionHistory'>) => {
+    if (!selectedOrganization) return;
+    
+    let finalSchedule: Schedule = triggerData.schedule;
+    if ((finalSchedule as any).type === 'daily') {
+        finalSchedule = { type: 'interval', amount: 1, unit: 'days' };
+    }
+
+    console.log(`[ACTION] Creating new trigger "${triggerData.name}" in organization root`);
+    const newTrigger: Trigger = {
+      ...triggerData,
+      schedule: finalSchedule,
+      id: `trigger-${Date.now()}`,
+      status: "active",
+      runCount: 0,
+      executionHistory: [],
+    };
+    
+    const updatedTriggers = [...selectedOrganization.triggers, newTrigger];
+    await updateOrganizationData(selectedOrganization.id, { triggers: updatedTriggers });
+  }, [selectedOrganization, updateOrganizationData]);
+
+
+  const updateTrigger = useCallback(async (folderId: string | null, triggerId: string, triggerData: Partial<Omit<Trigger, 'id'>>) => {
+     if (!selectedOrganization) return;
+     console.log(`[ACTION] Updating trigger: ${triggerId}`);
+     
+     if (folderId) {
+        const updatedFolders = selectedOrganization.folders.map(folder => {
+            if (folder.id === folderId) {
+                return {
+                    ...folder,
+                    triggers: folder.triggers.map((t) =>
+                        t.id === triggerId ? { ...t, ...triggerData } as Trigger : t
+                    ),
+                };
+            }
+            return folder;
+        });
+        await updateOrganizationData(selectedOrganization.id, { folders: updatedFolders });
+     } else {
+        const updatedTriggers = selectedOrganization.triggers.map(t => 
+            t.id === triggerId ? { ...t, ...triggerData } as Trigger : t
+        );
+        await updateOrganizationData(selectedOrganization.id, { triggers: updatedTriggers });
+     }
+  }, [selectedOrganization, updateOrganizationData]);
+
+  const updateTriggerStatus = useCallback(async (folderId: string | null, triggerId: string, status: TriggerStatus) => {
+     if (!selectedOrganization) return;
+     console.log(`[ACTION] Changing status for trigger ${triggerId} to ${status}`);
+     
+     const partialUpdate: Partial<Trigger> = { status };
+
+     if (folderId) {
+        const updatedFolders = selectedOrganization.folders.map(folder => {
+            if (folder.id === folderId) {
+                return {
+                    ...folder,
+                    triggers: folder.triggers.map((t) =>
+                        t.id === triggerId ? { ...t, ...partialUpdate } as Trigger : t
+                    ),
+                };
+            }
+            return folder;
+        });
+        await updateOrganizationData(selectedOrganization.id, { folders: updatedFolders });
+     } else {
+        const updatedTriggers = selectedOrganization.triggers.map(t => 
+            t.id === triggerId ? { ...t, ...partialUpdate } as Trigger : t
+        );
+        await updateOrganizationData(selectedOrganization.id, { triggers: updatedTriggers });
+     }
+  }, [selectedOrganization, updateOrganizationData]);
+
+
+  const deleteTrigger = useCallback(async (folderId: string | null, triggerId: string) => {
+    if (!selectedOrganization) return;
+    console.log(`[ACTION] Deleting trigger: ${triggerId}`);
+
+    if (folderId) {
+        const updatedFolders = selectedOrganization.folders.map(folder => 
+            folder.id === folderId
+            ? { ...folder, triggers: folder.triggers.filter(t => t.id !== triggerId) }
+            : folder
+        );
+        await updateOrganizationData(selectedOrganization.id, { folders: updatedFolders });
+    } else {
+        const updatedTriggers = selectedOrganization.triggers.filter(t => t.id !== triggerId);
+        await updateOrganizationData(selectedOrganization.id, { triggers: updatedTriggers });
+    }
+  }, [selectedOrganization, updateOrganizationData]);
+
+  const regenerateApiKey = useCallback(async () => {
+    if (!selectedOrganization) return;
+    console.log(`[ACTION] Regenerating API key for org: ${selectedOrganization.id}`);
+    const newApiKey = generateApiKey();
+    await updateOrganizationData(selectedOrganization.id, { apiKey: newApiKey });
+  }, [selectedOrganization, updateOrganizationData]);
+  
+  const updateOrganizationTimezone = useCallback(async (timezone: string) => {
+    if (!selectedOrganization) return;
+    console.log(`[ACTION] Updating timezone for org ${selectedOrganization.id} to ${timezone}`);
+    await updateOrganizationData(selectedOrganization.id, { timezone });
+  }, [selectedOrganization, updateOrganizationData]);
+
+  const testTrigger = useCallback(async (trigger: Trigger) => {
+    console.log(`[ACTION] Testing trigger: ${trigger.id} at URL: ${trigger.url}`);
+    try {
+      await axios({
+        method: trigger.method,
+        url: trigger.url,
+        data: trigger.payload,
+        headers: { 'Content-Type': 'application/json' },
+        timeout: trigger.timeout || 5000,
+      });
+      console.log(`[ACTION] Test for trigger ${trigger.id} was successful.`);
+      return true; // Success
+    } catch (error) {
+      console.error(`[ACTION-ERROR] Failed to execute test for trigger ${trigger.id}:`, error);
+      return false; // Failure
+    }
+  }, []);
+
+  const resetTrigger = useCallback(async (folderId: string | null, triggerId: string) => {
+    if (!selectedOrganization) return;
+
+    const now = new Date();
+    const nextMinute = startOfMinute(add(now, { minutes: 1 }));
+    
+    console.log(`[ACTION] Resetting trigger ${triggerId} to next minute: ${nextMinute.toISOString()}`);
+
+    const partialUpdate: Partial<Trigger> = { 
+        runCount: 0,
+        nextRun: nextMinute.toISOString(),
+        status: 'active',
+    };
+    
+    await updateTrigger(folderId, triggerId, partialUpdate);
+
+  }, [selectedOrganization, updateTrigger]);
+
+
+  return { organizations, selectedOrganization, loading: authLoading || loading, addFolder, deleteFolder, addTriggerToFolder, addTriggerToOrganization, updateTrigger, updateTriggerStatus, deleteTrigger, createOrganization, regenerateApiKey, testTrigger, updateOrganizationTimezone, resetTrigger };
+}
