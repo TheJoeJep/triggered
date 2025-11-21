@@ -8,11 +8,19 @@ export default {
     extend: {
       colors: {
         primary: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          700: '#0369a1',
+          50: '#fff7ed',
+          100: '#ffedd5',
+          200: '#fed7aa',
+          300: '#fdba74',
+          400: '#fb923c',
+          500: '#FF5F1F', // Neon Orange
+          600: '#FF4500', // Darker Orange
+          700: '#c2410c',
+          800: '#9a3412',
+          900: '#7c2d12',
+        },
+        accent: {
+          DEFAULT: '#FFFF00', // Neon Yellow
         },
       },
     },

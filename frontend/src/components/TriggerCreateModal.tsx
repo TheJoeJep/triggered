@@ -28,7 +28,7 @@ export default function TriggerCreateModal({ onClose }: Props) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     try {
       const payload = JSON.parse(payloadText)
       createMutation.mutate({ ...formData, payload })
@@ -38,60 +38,81 @@ export default function TriggerCreateModal({ onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <h2 className="text-2xl font-bold mb-4">Create Trigger</h2>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_0_50px_rgba(255,95,31,0.15)] p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-white bg-gradient-to-r from-primary-500 to-accent bg-clip-text text-transparent">
+            Create Trigger
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Name *
             </label>
             <input
               type="text"
               required
               className="input-field"
+              placeholder="My Awesome Trigger"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Webhook URL *
             </label>
             <input
               type="url"
               required
               className="input-field"
+              placeholder="https://api.example.com/webhook"
               value={formData.webhookUrl}
               onChange={(e) => setFormData({ ...formData, webhookUrl: e.target.value })}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Schedule Type *
             </label>
-            <select
-              className="input-field"
-              value={formData.scheduleType}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  scheduleType: e.target.value as any,
-                })
-              }
-            >
-              <option value="one-time">One-time</option>
-              <option value="recurring">Recurring</option>
-              <option value="interval">Interval</option>
-            </select>
+            <div className="grid grid-cols-3 gap-4">
+              {['one-time', 'recurring', 'interval'].map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, scheduleType: type as any })}
+                  className={`px-4 py-3 rounded-lg border transition-all duration-300 capitalize ${formData.scheduleType === type
+                    ? 'bg-primary-600/20 border-primary-500 text-primary-500 shadow-[0_0_15px_rgba(255,95,31,0.3)]'
+                    : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10 hover:border-white/20'
+                    }`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
           </div>
 
           {formData.scheduleType === 'one-time' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+            <div className="animate-fadeIn">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Trigger Time *
               </label>
               <input
@@ -105,9 +126,9 @@ export default function TriggerCreateModal({ onClose }: Props) {
           )}
 
           {formData.scheduleType === 'recurring' && (
-            <>
+            <div className="space-y-4 animate-fadeIn">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
                   Interval (minutes) *
                 </label>
                 <input
@@ -122,7 +143,7 @@ export default function TriggerCreateModal({ onClose }: Props) {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
                   Max Executions (optional)
                 </label>
                 <input
@@ -138,12 +159,12 @@ export default function TriggerCreateModal({ onClose }: Props) {
                   }
                 />
               </div>
-            </>
+            </div>
           )}
 
           {formData.scheduleType === 'interval' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+            <div className="animate-fadeIn">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Delay (minutes) *
               </label>
               <input
@@ -160,7 +181,7 @@ export default function TriggerCreateModal({ onClose }: Props) {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               JSON Payload *
             </label>
             <textarea
@@ -172,7 +193,7 @@ export default function TriggerCreateModal({ onClose }: Props) {
             />
           </div>
 
-          <div className="flex gap-2 justify-end">
+          <div className="flex gap-3 justify-end pt-4 border-t border-white/10">
             <button type="button" onClick={onClose} className="btn-secondary">
               Cancel
             </button>
