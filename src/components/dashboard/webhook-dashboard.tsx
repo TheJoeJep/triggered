@@ -24,14 +24,14 @@ import { FolderCard } from "./folder-card";
 export function WebhookDashboard() {
   const { selectedOrganization, loading, addTriggerToFolder, addTriggerToOrganization, updateTrigger, deleteTrigger, updateTriggerStatus, testTrigger, resetTrigger } = useOrganizations();
   const { selectedFolderId, setSelectedFolderId } = useSelectedFolder();
-  
+
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [selectedTrigger, setSelectedTrigger] = useState<Trigger | null>(null);
   const [highlightedTriggerId, setHighlightedTriggerId] = useState<string | null>(null);
   const [historyLogs, setHistoryLogs] = useState<ExecutionLog[]>([]);
   const { toast } = useToast();
-  
+
   const folders = selectedOrganization?.folders || [];
   const topLevelTriggers = selectedOrganization?.triggers || [];
 
@@ -42,15 +42,15 @@ export function WebhookDashboard() {
       setSelectedFolderId(null);
     }
   }, [selectedOrganization, selectedFolderId, setSelectedFolderId, loading]);
-  
+
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
-  
+
   const viewName = selectedFolder ? selectedFolder.name : selectedOrganization?.name || 'Dashboard';
   const canCreateTriggers = !!selectedOrganization;
 
 
   const handleCreateNew = () => {
-     if (!canCreateTriggers) {
+    if (!canCreateTriggers) {
       toast({
         title: "No Organization Selected",
         description: "Please create or select an organization before adding a trigger.",
@@ -69,11 +69,11 @@ export function WebhookDashboard() {
 
   const handleRowClick = (trigger: Trigger) => {
     if (highlightedTriggerId === trigger.id) {
-        // Second click, open edit sheet
-        handleEdit(trigger);
+      // Second click, open edit sheet
+      handleEdit(trigger);
     } else {
-        // First click, just highlight
-        setHighlightedTriggerId(trigger.id);
+      // First click, just highlight
+      setHighlightedTriggerId(trigger.id);
     }
   };
 
@@ -85,7 +85,7 @@ export function WebhookDashboard() {
   const handleDelete = async (id: string) => {
     if (!selectedOrganization) return;
     await deleteTrigger(selectedFolderId, id);
-     if (selectedFolderId && selectedFolder && selectedFolder.triggers.length === 1 && selectedFolder.triggers[0].id === id) {
+    if (selectedFolderId && selectedFolder && selectedFolder.triggers.length === 1 && selectedFolder.triggers[0].id === id) {
       setSelectedFolderId(null);
     }
     toast({
@@ -119,13 +119,13 @@ export function WebhookDashboard() {
     }
     setIsSheetOpen(false);
   };
-  
+
   const handleStatusChange = async (id: string, status: TriggerStatus) => {
     if (!selectedOrganization) return;
     await updateTriggerStatus(selectedFolderId, id, status);
     toast({
-        title: "Trigger Status Updated",
-        description: `The trigger has been ${status}.`,
+      title: "Trigger Status Updated",
+      description: `The trigger has been ${status}.`,
     });
   };
 
@@ -153,63 +153,105 @@ export function WebhookDashboard() {
     if (!selectedOrganization) return;
     await resetTrigger(selectedFolderId, trigger.id);
     toast({
-        title: "Trigger Reset",
-        description: `The trigger has been rescheduled to run in the next minute.`,
+      title: "Trigger Reset",
+      description: `The trigger has been rescheduled to run in the next minute.`,
     });
   };
 
 
   if (loading) {
-     return (
-        <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
-      )
+    return (
+      <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    )
   }
-  
+
   return (
     <>
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
             {selectedFolder && <Folder className="h-6 w-6 text-muted-foreground" />}
             <h2 className="text-2xl font-bold tracking-tight font-headline">{viewName}</h2>
-        </div>
-        <div className="flex gap-2">
+          </div>
+          <div className="flex gap-2">
             <Button variant="outline">
-                <Users className="mr-2 h-4 w-4" />
-                Manage Team
+              <Users className="mr-2 h-4 w-4" />
+              Manage Team
             </Button>
             <Button onClick={handleCreateNew} size="lg" disabled={loading || !canCreateTriggers}>
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Create Trigger
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Create Trigger
             </Button>
+          </div>
         </div>
-      </div>
-      
-      { !selectedOrganization && (
-         <Card>
-           <CardContent className="pt-6">
-             <div className="flex flex-col items-center justify-center h-[200px] space-y-4 p-8 text-center border-2 border-dashed rounded-lg">
-                  <h2 className="text-xl font-bold tracking-tight font-headline">Welcome!</h2>
-                  <p className="text-muted-foreground">It looks like you're not part of any organization yet.</p>
-                   <p className="text-sm text-muted-foreground">Your initial organization is being created. This should only take a moment.</p>
-              </div>
-           </CardContent>
-         </Card>
-      )}
 
-      {selectedOrganization && (
-        <>
-          {selectedFolder ? (
-            <Card>
+        {!selectedOrganization && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex flex-col items-center justify-center h-[200px] space-y-4 p-8 text-center border-2 border-dashed border-white/10 rounded-lg">
+                <h2 className="text-xl font-bold tracking-tight font-headline text-white">Welcome!</h2>
+                <p className="text-gray-400">It looks like you're not part of any organization yet.</p>
+                <p className="text-sm text-gray-500">Your initial organization is being created. This should only take a moment.</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {selectedOrganization && (
+          <>
+            {selectedFolder ? (
+              <Card>
                 <CardHeader>
-                    <CardTitle>Scheduled Triggers</CardTitle>
-                    <CardDescription>An overview of all triggers in the &quot;{selectedFolder.name}&quot; folder.</CardDescription>
+                  <CardTitle>Scheduled Triggers</CardTitle>
+                  <CardDescription>An overview of all triggers in the &quot;{selectedFolder.name}&quot; folder.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <TriggerTable
-                        triggers={selectedFolder.triggers}
+                  <TriggerTable
+                    triggers={selectedFolder.triggers}
+                    selectedTriggerId={highlightedTriggerId}
+                    onRowClick={handleRowClick}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onStatusChange={handleStatusChange}
+                    onTest={handleTest}
+                    onShowHistory={handleShowHistory}
+                    onReset={handleReset}
+                  />
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-6">
+                {folders.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Folders</CardTitle>
+                      <CardDescription>Organize your triggers into folders for better management.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {folders.map(folder => (
+                        <FolderCard
+                          key={folder.id}
+                          folder={folder}
+                          onClick={() => setSelectedFolderId(folder.id)}
+                        />
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {(folders.length > 0 && topLevelTriggers.length > 0) && <Separator />}
+
+                {topLevelTriggers.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Individual Triggers</CardTitle>
+                      <CardDescription>These triggers are not assigned to any folder.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <TriggerTable
+                        triggers={topLevelTriggers}
                         selectedTriggerId={highlightedTriggerId}
                         onRowClick={handleRowClick}
                         onEdit={handleEdit}
@@ -218,76 +260,34 @@ export function WebhookDashboard() {
                         onTest={handleTest}
                         onShowHistory={handleShowHistory}
                         onReset={handleReset}
-                    />
-                </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-6">
-                {folders.length > 0 && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Folders</CardTitle>
-                             <CardDescription>Organize your triggers into folders for better management.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                            {folders.map(folder => (
-                                <FolderCard 
-                                    key={folder.id} 
-                                    folder={folder} 
-                                    onClick={() => setSelectedFolderId(folder.id)} 
-                                />
-                            ))}
-                        </CardContent>
-                    </Card>
-                )}
-                
-                {(folders.length > 0 && topLevelTriggers.length > 0) && <Separator />}
-
-                {topLevelTriggers.length > 0 && (
-                  <Card>
-                      <CardHeader>
-                          <CardTitle>Individual Triggers</CardTitle>
-                          <CardDescription>These triggers are not assigned to any folder.</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                          <TriggerTable
-                              triggers={topLevelTriggers}
-                              selectedTriggerId={highlightedTriggerId}
-                              onRowClick={handleRowClick}
-                              onEdit={handleEdit}
-                              onDelete={handleDelete}
-                              onStatusChange={handleStatusChange}
-                              onTest={handleTest}
-                              onShowHistory={handleShowHistory}
-                              onReset={handleReset}
-                          />
-                      </CardContent>
+                      />
+                    </CardContent>
                   </Card>
                 )}
 
                 {folders.length === 0 && topLevelTriggers.length === 0 && (
-                   <Card>
+                  <Card>
                     <CardContent className="pt-6">
-                      <div className="flex flex-col items-center justify-center h-[200px] space-y-4 p-8 text-center border-2 border-dashed rounded-lg">
-                            <h2 className="text-xl font-bold tracking-tight font-headline">No Triggers Yet</h2>
-                            <p className="text-muted-foreground">Click the "Create Trigger" button to get started.</p>
-                        </div>
+                      <div className="flex flex-col items-center justify-center h-[200px] space-y-4 p-8 text-center border-2 border-dashed border-white/10 rounded-lg">
+                        <h2 className="text-xl font-bold tracking-tight font-headline text-white">No Triggers Yet</h2>
+                        <p className="text-gray-400">Click the "Create Trigger" button to get started.</p>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-     <CreateTriggerSheet
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      <CreateTriggerSheet
         isOpen={isSheetOpen}
         onOpenChange={(isOpen) => {
-            setIsSheetOpen(isOpen);
-            if (!isOpen) {
-                // Clear selection when sheet closes
-                setHighlightedTriggerId(null);
-            }
+          setIsSheetOpen(isOpen);
+          if (!isOpen) {
+            // Clear selection when sheet closes
+            setHighlightedTriggerId(null);
+          }
         }}
         onSave={handleSave}
         trigger={selectedTrigger}

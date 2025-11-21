@@ -14,8 +14,8 @@ export function FolderCard({ folder, onClick }: FolderCardProps) {
     const triggerCount = folder.triggers.length;
 
     return (
-        <Card 
-            className="hover:shadow-lg hover:border-primary/50 transition-all cursor-pointer"
+        <Card
+            className="hover:shadow-[0_0_25px_rgba(255,95,31,0.3)] hover:border-primary transition-all cursor-pointer bg-black/40 backdrop-blur-md border-white/10"
             onClick={onClick}
         >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

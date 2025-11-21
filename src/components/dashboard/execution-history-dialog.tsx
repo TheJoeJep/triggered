@@ -37,20 +37,20 @@ export function ExecutionHistoryDialog({
           <div className="space-y-6 py-4">
             {logs.length > 0 ? (
               logs.map((log) => (
-                <div key={log.id} className="p-4 border rounded-lg space-y-4">
+                <div key={log.id} className="p-4 border border-white/10 bg-white/5 rounded-lg space-y-4">
                   <div className="flex justify-between items-center">
                     <h3 className="font-semibold">
                       {format(new Date(log.timestamp), "yyyy-MM-dd HH:mm:ss 'UTC'")}
                     </h3>
-                     <Badge variant={log.status === 'success' ? 'default' : 'destructive'} className="capitalize">
+                    <Badge variant={log.status === 'success' ? 'default' : 'destructive'} className="capitalize">
                       {log.status} {log.responseStatus && `(${log.responseStatus})`}
                     </Badge>
                   </div>
-                  
+
                   {log.requestPayload && (
                     <div>
                       <h4 className="font-medium text-sm mb-1">Request Payload</h4>
-                      <pre className="bg-muted p-2 rounded-md text-xs overflow-x-auto">
+                      <pre className="bg-black/50 p-2 rounded-md text-xs overflow-x-auto text-gray-300">
                         <code>{JSON.stringify(log.requestPayload, null, 2)}</code>
                       </pre>
                     </div>
@@ -59,14 +59,14 @@ export function ExecutionHistoryDialog({
                   {log.responseBody && (
                     <div>
                       <h4 className="font-medium text-sm mb-1">Response Body</h4>
-                      <pre className="bg-muted p-2 rounded-md text-xs overflow-x-auto">
+                      <pre className="bg-black/50 p-2 rounded-md text-xs overflow-x-auto text-gray-300">
                         <code>{log.responseBody}</code>
                       </pre>
                     </div>
                   )}
 
                   {log.error && (
-                     <div>
+                    <div>
                       <h4 className="font-medium text-sm mb-1 text-destructive">Error</h4>
                       <p className="text-destructive text-xs">{log.error}</p>
                     </div>
@@ -75,7 +75,7 @@ export function ExecutionHistoryDialog({
                 </div>
               ))
             ) : (
-              <div className="text-center text-muted-foreground py-16">
+              <div className="text-center text-gray-400 py-16">
                 No execution history found.
               </div>
             )}

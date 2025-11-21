@@ -10,41 +10,41 @@ const calculateNextRun = (schedule: Schedule, timezone: string, currentNextRun: 
     const now = new Date();
     // Use the CURRENT scheduled run time as the base for the next calculation, not 'now'.
     const lastRun = new Date(currentNextRun);
-    
+
     // Convert the last run time to the organization's specific timezone to perform calculations.
     const zonedBaseTime = toZonedTime(lastRun, timezone);
-    
+
     let nextRunInTimezone: Date;
 
     if (schedule.type === 'one-time') {
         // One-time triggers that have run should not run again. Set to a far-future date.
         return new Date('9999-12-31T23:59:59Z');
     }
-    
+
     // This handles the legacy incorrect "daily" type by treating it as a 1-day interval
     if ((schedule as any).type === 'daily') {
         schedule = { type: 'interval', amount: 1, unit: 'days' };
     }
-    
+
     if (schedule.type !== 'interval' || !schedule.unit || !schedule.amount) {
         console.error(`[CRON-ERROR] Invalid interval schedule object for calculation:`, schedule);
         // Return a far-future date to prevent re-running an invalid trigger
         return new Date('9999-12-31T23:59:59Z');
     }
-    
+
     const unit = schedule.unit as "seconds" | "minutes" | "hours" | "days" | "weeks" | "months" | "years";
     // Add the interval to the last scheduled run time.
     nextRunInTimezone = add(zonedBaseTime, { [unit]: schedule.amount });
-    
+
     // Convert the calculated time back to a standard Date object (in UTC).
     let futureRun = fromZonedTime(nextRunInTimezone, timezone);
 
     // If, for some reason, the calculated next run is still in the past (e.g., cron was down),
     // keep adding the interval until the next run time is in the future.
     while (futureRun < now && schedule.type === 'interval') {
-         const unit = schedule.unit as "seconds" | "minutes" | "hours" | "days" | "weeks" | "months" | "years";
-         const nextZoned = add(toZonedTime(futureRun, timezone), { [unit]: schedule.amount });
-         futureRun = fromZonedTime(nextZoned, timezone);
+        const unit = schedule.unit as "seconds" | "minutes" | "hours" | "days" | "weeks" | "months" | "years";
+        const nextZoned = add(toZonedTime(futureRun, timezone), { [unit]: schedule.amount });
+        futureRun = fromZonedTime(nextZoned, timezone);
     }
     console.log(`[CRON] Calculated next run: ${futureRun.toISOString()}`);
     return futureRun;
@@ -69,7 +69,7 @@ const processTrigger = async (
         status: 'failed', // Default to failed, update on success
         requestPayload: trigger.payload,
     };
-    
+
     const updatedTriggerFields: Partial<Trigger> = {};
 
     try {
@@ -80,7 +80,7 @@ const processTrigger = async (
             headers: { 'Content-Type': 'application/json' },
             timeout: trigger.timeout || 5000,
         });
-        
+
         console.log(`[CRON] Trigger "${trigger.name}" executed successfully with status ${response.status}.`);
         logEntry.status = 'success';
         logEntry.responseStatus = response.status;
@@ -100,7 +100,7 @@ const processTrigger = async (
             ...logEntry,
             id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
         };
-        
+
         const currentRunCount = trigger.runCount || 0;
         updatedTriggerFields.runCount = currentRunCount + 1;
         updatedTriggerFields.executionHistory = [newLog, ...(trigger.executionHistory || [])].slice(0, 20);
@@ -115,7 +115,7 @@ const processTrigger = async (
             updatedTriggerFields.status = 'completed';
             isCompleted = true;
         }
-        
+
         if (isCompleted) {
             updatedTriggerFields.nextRun = new Date('9999-12-31T23:59:59Z').toISOString();
         } else {
@@ -125,7 +125,7 @@ const processTrigger = async (
 
         // --- Database Update Logic ---
         const orgDocRef = db.collection('organizations').doc(orgId);
-        
+
         try {
             console.log(`[CRON] Attempting to update trigger ${trigger.id} in the database.`);
             await db.runTransaction(async (transaction) => {
@@ -135,14 +135,14 @@ const processTrigger = async (
                 };
 
                 const orgData = orgDoc.data() as Organization;
-                
+
                 if (folderId) {
                     const folderIndex = orgData.folders.findIndex(f => f.id === folderId);
                     if (folderIndex === -1) throw new Error(`Folder ${folderId} not found in org ${orgId}`);
 
                     const triggerIndex = orgData.folders[folderIndex].triggers.findIndex(t => t.id === trigger.id);
                     if (triggerIndex === -1) throw new Error(`Trigger ${trigger.id} not found in folder ${folderId}`);
-                    
+
                     const triggerInDB = orgData.folders[folderIndex].triggers[triggerIndex];
                     const finalUpdatedTrigger = { ...triggerInDB, ...updatedTriggerFields };
 
@@ -152,7 +152,7 @@ const processTrigger = async (
                     transaction.update(orgDocRef, { [updatePath]: currentTriggers });
 
                 } else {
-                    const triggerIndex = orgData.triggers.findIndex(t => t.id === triggerId);
+                    const triggerIndex = orgData.triggers.findIndex(t => t.id === trigger.id);
                     if (triggerIndex === -1) throw new Error(`Trigger ${trigger.id} not found in org ${orgId}`);
 
                     const triggerInDB = orgData.triggers[triggerIndex];
@@ -178,7 +178,7 @@ export async function GET() {
         console.error("[CRON-ERROR] Firestore DB not available in cron job.");
         return NextResponse.json({ success: false, message: 'Server configuration error.' }, { status: 500 });
     }
-    
+
     try {
         const now = new Date().toISOString();
         const organizationsSnapshot = await db.collection('organizations').get();
@@ -217,7 +217,7 @@ export async function GET() {
                 }
             }
         }
-        
+
         if (promises.length > 0) {
             console.log(`[CRON] Executing ${promises.length} due triggers.`);
             await Promise.all(promises);

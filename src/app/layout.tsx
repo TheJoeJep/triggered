@@ -7,6 +7,8 @@ import { AuthProvider } from "@/hooks/use-auth";
 import { AuthGuard } from "@/components/auth-guard";
 import { ThemeProvider } from "@/components/theme-provider";
 
+import Background from "@/components/ui/background";
+
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
@@ -35,16 +37,17 @@ export default function RootLayout({
           inter.variable
         )}
       >
+        <Background />
         <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem={false}
+          disableTransitionOnChange
         >
           <AuthProvider>
-              <AuthGuard>
-                  {children}
-              </AuthGuard>
+            <AuthGuard>
+              {children}
+            </AuthGuard>
           </AuthProvider>
           <Toaster />
         </ThemeProvider>
