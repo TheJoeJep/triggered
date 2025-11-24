@@ -227,16 +227,10 @@ const Sidebar = React.forwardRef<
         )}
         data-state={state}
         data-collapsible={state === "collapsed" ? collapsible : ""}
+
         data-variant={variant}
-        data-side={side}
-        {...props}
       >
-        <div
-          data-sidebar="sidebar"
-          className="flex h-full w-full flex-col bg-black/80 backdrop-blur-xl"
-        >
-          {children}
-        </div>
+        {children}
       </div>
     )
   }

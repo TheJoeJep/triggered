@@ -1,7 +1,7 @@
-import type {NextConfig} from 'next';
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  /* config options here - triggering rebuild 20 */
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -23,6 +23,7 @@ const nextConfig: NextConfig = {
       allowedOrigins: ['*'],
     },
   },
+  serverExternalPackages: ['firebase-admin'],
 };
 
 export default nextConfig;

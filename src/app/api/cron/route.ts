@@ -1,32 +1,37 @@
 
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
-import type { Organization, Trigger, Schedule, ExecutionLog } from '@/lib/types';
+import { Organization, Trigger, ExecutionLog, Schedule } from '@/lib/types';
 import axios from 'axios';
-import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { add } from 'date-fns';
+import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 
-const calculateNextRun = (schedule: Schedule, timezone: string, currentNextRun: string): Date => {
+// Force dynamic to prevent caching of the cron job
+export const dynamic = 'force-dynamic';
+
+const calculateNextRun = (schedule: Schedule, timezone: string, lastScheduledRun?: string): Date => {
     const now = new Date();
-    // Use the CURRENT scheduled run time as the base for the next calculation, not 'now'.
-    const lastRun = new Date(currentNextRun);
+    // If we have a last scheduled run, use that as the base. Otherwise, use now.
+    // Ideally, we should align to the schedule (e.g., if every 5 mins, align to :00, :05, etc.)
+    // For now, we'll just add the interval to the last run or now.
 
-    // Convert the last run time to the organization's specific timezone to perform calculations.
-    const zonedBaseTime = toZonedTime(lastRun, timezone);
+    let baseTime = lastScheduledRun ? new Date(lastScheduledRun) : now;
 
+    // If the last run is in the future (shouldn't happen for a due trigger), use it.
+    // If it's in the past, we want to calculate the next slot from IT, but ensure the result is in the future.
+
+    // Convert baseTime to the organization's timezone to perform calendar math
+    const zonedBaseTime = toZonedTime(baseTime, timezone);
     let nextRunInTimezone: Date;
 
     if (schedule.type === 'one-time') {
-        // One-time triggers that have run should not run again. Set to a far-future date.
+        // One-time triggers shouldn't be rescheduled via this function usually, 
+        // but if they are, we might want to return a far-future date or handle it upstream.
+        // For safety, return a date far in the future.
         return new Date('9999-12-31T23:59:59Z');
     }
 
-    // This handles the legacy incorrect "daily" type by treating it as a 1-day interval
-    if ((schedule as any).type === 'daily') {
-        schedule = { type: 'interval', amount: 1, unit: 'days' };
-    }
-
-    if (schedule.type !== 'interval' || !schedule.unit || !schedule.amount) {
+    if (!schedule.amount || !schedule.unit) {
         console.error(`[CRON-ERROR] Invalid interval schedule object for calculation:`, schedule);
         // Return a far-future date to prevent re-running an invalid trigger
         return new Date('9999-12-31T23:59:59Z');
@@ -174,10 +179,7 @@ const processTrigger = async (
 
 export async function GET() {
     console.log(`[CRON] Job started at ${new Date().toISOString()}`);
-    if (!db) {
-        console.error("[CRON-ERROR] Firestore DB not available in cron job.");
-        return NextResponse.json({ success: false, message: 'Server configuration error.' }, { status: 500 });
-    }
+    // db check is removed as Proxy handles it, or we let it fail naturally
 
     try {
         const now = new Date().toISOString();
@@ -229,6 +231,6 @@ export async function GET() {
         return NextResponse.json({ success: true, message: 'Cron job executed successfully.' });
     } catch (error) {
         console.error('[CRON-ERROR] Unhandled error in cron job:', error);
-        return NextResponse.json({ success: false, message: 'Cron job failed.' }, { status: 500 });
+        return NextResponse.json({ success: false, message: 'Cron job failed.', error: String(error) }, { status: 500 });
     }
 }

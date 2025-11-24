@@ -1,41 +1,86 @@
 
-import * as admin from 'firebase-admin';
+import admin from 'firebase-admin';
 import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 
 // This is a server-side only file.
 
-let db: admin.firestore.Firestore;
-let auth: admin.auth.Auth;
+// This is a server-side only file.
 
-if (!admin.apps.length) {
-  try {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-      // Local development: Use the service account from .env.local
-      console.log('Initializing Firebase Admin SDK with service account...');
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-      });
-      console.log('Firebase Admin SDK initialized successfully (local).');
-    } else {
-      // Production (App Hosting): Use Application Default Credentials
-      console.log('Initializing Firebase Admin SDK for App Hosting...');
-      admin.initializeApp();
-      console.log('Firebase Admin SDK initialized successfully (App Hosting).');
-    }
-    db = getFirestore();
-    auth = getAdminAuth();
-  } catch (error: any) {
-     console.error('[CRITICAL-ERROR] Firebase Admin SDK initialization failed:', error.message);
-     // Do not exit process, just log the error. The app will run but backend features will fail.
+if (process.env.NODE_ENV === 'development') {
+  if (!process.env.FIRESTORE_EMULATOR_HOST) {
+    process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080';
   }
-} else {
-    // If already initialized, just get the instances
-    db = getFirestore();
-    auth = getAdminAuth();
+  if (!process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+    process.env.FIREBASE_AUTH_EMULATOR_HOST = 'localhost:9099';
+  }
 }
 
+let dbInstance: admin.firestore.Firestore | undefined;
+let authInstance: admin.auth.Auth | undefined;
+let initError: string | null = null;
 
-// Export the initialized services.
-export { db, auth, admin as adminSDK };
+function initializeFirebaseAdmin() {
+  if (dbInstance && authInstance) {
+    return { db: dbInstance, auth: authInstance };
+  }
+
+  try {
+    let app: admin.app.App;
+
+    console.log(`[FirebaseAdmin] NODE_ENV: ${process.env.NODE_ENV}`);
+    console.log(`[FirebaseAdmin] Existing apps: ${admin.apps.length}`);
+
+    if (!admin.apps.length) {
+      if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+        // Local development with Service Account
+        console.log('[FirebaseAdmin] Initializing with service account...');
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        app = admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+        });
+      } else {
+        // Local development with Emulators (Fallback) or ADC
+        console.log('[FirebaseAdmin] Initializing for Emulators/ADC...');
+        app = admin.initializeApp({ projectId: 'demo-project' });
+      }
+    } else {
+      console.log('[FirebaseAdmin] Using existing default app.');
+      app = admin.app();
+    }
+
+    console.log('[FirebaseAdmin] App initialized. Getting Firestore...');
+    dbInstance = getFirestore(app);
+    console.log(`[FirebaseAdmin] Firestore got: ${!!dbInstance}`);
+
+    console.log('[FirebaseAdmin] Firestore got. Getting Auth...');
+    authInstance = getAdminAuth(app);
+    console.log('[FirebaseAdmin] Firebase Admin SDK initialized successfully.');
+
+  } catch (error: any) {
+    console.error('[CRITICAL-ERROR] Firebase Admin SDK initialization failed:', error);
+    initError = error.message || String(error);
+    // We don't re-throw, so db/auth might be undefined.
+  }
+
+  return { db: dbInstance, auth: authInstance };
+}
+
+// Export a proxy or getter to ensure initialization happens on access
+export const db = new Proxy({}, {
+  get: (_target, prop) => {
+    const result = initializeFirebaseAdmin();
+    if (!result.db) throw new Error(`Firestore not initialized. Error: ${initError}`);
+    return (result.db as any)[prop];
+  }
+}) as admin.firestore.Firestore;
+
+export const auth = new Proxy({}, {
+  get: (_target, prop) => {
+    const result = initializeFirebaseAdmin();
+    if (!result.auth) throw new Error(`Auth not initialized. Error: ${initError}`);
+    return (result.auth as any)[prop];
+  }
+}) as admin.auth.Auth;
+
+export { admin as adminSDK, initError };

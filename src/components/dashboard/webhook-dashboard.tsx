@@ -43,6 +43,20 @@ export function WebhookDashboard() {
     }
   }, [selectedOrganization, selectedFolderId, setSelectedFolderId, loading]);
 
+  // Poll the cron endpoint in development mode to simulate the cron job
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      const interval = setInterval(() => {
+        fetch('/api/cron')
+          .then(res => res.json())
+          .then(data => console.log('[DEV-POLLER] Cron triggered:', data))
+          .catch(err => console.error('[DEV-POLLER] Cron trigger failed:', err));
+      }, 10000); // Poll every 10 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, []);
+
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
 
   const viewName = selectedFolder ? selectedFolder.name : selectedOrganization?.name || 'Dashboard';

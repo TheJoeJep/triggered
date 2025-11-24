@@ -22,7 +22,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={inter.variable}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -32,10 +32,8 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={cn(
-          "min-h-screen bg-background font-body antialiased",
-          inter.variable
-        )}
+        suppressHydrationWarning
+        className="min-h-screen font-body antialiased"
       >
         <Background />
         <ThemeProvider
