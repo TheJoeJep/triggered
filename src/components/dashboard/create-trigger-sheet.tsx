@@ -1,4 +1,3 @@
-
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -49,6 +48,7 @@ import { Switch } from "../ui/switch";
 const payloadItemSchema = z.object({
   key: z.string().min(1, "Key cannot be empty."),
   value: z.string(),
+  type: z.enum(["string", "number", "boolean", "json"]),
 });
 
 const formSchema = z.object({
@@ -132,7 +132,19 @@ export function CreateTriggerSheet({
           intervalUnit: schedule.type === 'interval' ? schedule.unit : undefined,
           limit: trigger.limit,
           timeout: trigger.timeout || 5000,
-          payload: trigger.payload ? Object.entries(trigger.payload).map(([key, value]) => ({ key, value: String(value) })) : [],
+          payload: trigger.payload ? Object.entries(trigger.payload).map(([key, value]) => {
+            let type: "string" | "number" | "boolean" | "json" = "string";
+            let stringValue = String(value);
+
+            if (typeof value === 'number') type = "number";
+            else if (typeof value === 'boolean') type = "boolean";
+            else if (typeof value === 'object') {
+              type = "json";
+              stringValue = JSON.stringify(value);
+            }
+
+            return { key, value: stringValue, type };
+          }) : [],
         });
       } else {
         form.reset({
@@ -164,12 +176,20 @@ export function CreateTriggerSheet({
       schedule = { type: "one-time" };
     }
 
-    const payload = values.payload?.reduce((acc, { key, value }) => {
+    const payload = values.payload?.reduce((acc, { key, value, type }) => {
       if (key) {
         try {
-          acc[key] = JSON.parse(value);
+          if (type === 'number') {
+            acc[key] = Number(value);
+          } else if (type === 'boolean') {
+            acc[key] = value === 'true';
+          } else if (type === 'json') {
+            acc[key] = JSON.parse(value);
+          } else {
+            acc[key] = value;
+          }
         } catch (e) {
-          acc[key] = value;
+          acc[key] = value; // Fallback to string if parsing fails
         }
       }
       return acc;
@@ -181,9 +201,9 @@ export function CreateTriggerSheet({
       method: values.method as HttpMethod,
       nextRun: combinedDateTime.toISOString(),
       schedule: schedule,
-      limit: values.limit,
-      timeout: values.timeout,
-      payload: (payload && Object.keys(payload).length > 0) ? payload : undefined,
+      ...(values.limit !== undefined ? { limit: values.limit } : {}),
+      ...(values.timeout !== undefined ? { timeout: values.timeout } : {}),
+      ...((payload && Object.keys(payload).length > 0) ? { payload } : {}),
     };
 
     const targetFolderId = (values.folderId === "null" || !values.folderId) ? null : values.folderId;
@@ -293,16 +313,39 @@ export function CreateTriggerSheet({
                   <div className="space-y-4 rounded-md border border-white/10 bg-white/5 p-4">
                     <FormLabel className="text-gray-300">JSON Payload</FormLabel>
                     {fields.map((field, index) => (
-                      <div key={field.id} className="flex items-end gap-2">
+                      <div key={field.id} className="flex items-start gap-2">
                         <FormField
                           control={form.control}
                           name={`payload.${index}.key`}
                           render={({ field }) => (
-                            <FormItem className="flex-1">
+                            <FormItem className="flex-[1]">
                               <FormLabel className="text-xs text-gray-400">Key</FormLabel>
                               <FormControl>
-                                <Input placeholder="e.g. userId" {...field} className="bg-black/50 border-white/10 text-white placeholder:text-gray-600" />
+                                <Input placeholder="Key" {...field} className="bg-black/50 border-white/10 text-white placeholder:text-gray-600" />
                               </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name={`payload.${index}.type`}
+                          render={({ field }) => (
+                            <FormItem className="flex-[1]">
+                              <FormLabel className="text-xs text-gray-400">Type</FormLabel>
+                              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <FormControl>
+                                  <SelectTrigger className="bg-black/50 border-white/10 text-white h-10">
+                                    <SelectValue placeholder="Type" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent className="bg-black/90 border-white/10 text-white backdrop-blur-xl">
+                                  <SelectItem value="string" className="focus:bg-white/10 focus:text-white">String</SelectItem>
+                                  <SelectItem value="number" className="focus:bg-white/10 focus:text-white">Number</SelectItem>
+                                  <SelectItem value="boolean" className="focus:bg-white/10 focus:text-white">Boolean</SelectItem>
+                                  <SelectItem value="json" className="focus:bg-white/10 focus:text-white">JSON</SelectItem>
+                                </SelectContent>
+                              </Select>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -310,22 +353,44 @@ export function CreateTriggerSheet({
                         <FormField
                           control={form.control}
                           name={`payload.${index}.value`}
-                          render={({ field }) => (
-                            <FormItem className="flex-1">
-                              <FormLabel className="text-xs text-gray-400">Value</FormLabel>
-                              <FormControl>
-                                <Input placeholder="e.g. 123" {...field} className="bg-black/50 border-white/10 text-white placeholder:text-gray-600" />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
+                          render={({ field }) => {
+                            const type = form.watch(`payload.${index}.type`);
+                            return (
+                              <FormItem className="flex-[2]">
+                                <FormLabel className="text-xs text-gray-400">Value</FormLabel>
+                                <FormControl>
+                                  {type === 'boolean' ? (
+                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                      <FormControl>
+                                        <SelectTrigger className="bg-black/50 border-white/10 text-white h-10">
+                                          <SelectValue placeholder="Select boolean" />
+                                        </SelectTrigger>
+                                      </FormControl>
+                                      <SelectContent className="bg-black/90 border-white/10 text-white backdrop-blur-xl">
+                                        <SelectItem value="true" className="focus:bg-white/10 focus:text-white">True</SelectItem>
+                                        <SelectItem value="false" className="focus:bg-white/10 focus:text-white">False</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  ) : (
+                                    <Input
+                                      placeholder={type === 'json' ? '{"foo":"bar"}' : "Value"}
+                                      {...field}
+                                      type={type === 'number' ? 'number' : 'text'}
+                                      className="bg-black/50 border-white/10 text-white placeholder:text-gray-600"
+                                    />
+                                  )}
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )
+                          }}
                         />
-                        <Button variant="ghost" size="icon" onClick={() => remove(index)} className="hover:bg-white/10 hover:text-destructive">
+                        <Button variant="ghost" size="icon" onClick={() => remove(index)} className="mt-8 hover:bg-white/10 hover:text-destructive">
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
                     ))}
-                    <Button type="button" variant="outline" size="sm" onClick={() => append({ key: "", value: "" })} className="border-white/10 bg-transparent text-gray-300 hover:bg-white/10 hover:text-white">
+                    <Button type="button" variant="outline" size="sm" onClick={() => append({ key: "", value: "", type: "string" })} className="border-white/10 bg-transparent text-gray-300 hover:bg-white/10 hover:text-white">
                       <PlusCircle className="mr-2 h-4 w-4" />
                       Add Variable
                     </Button>
