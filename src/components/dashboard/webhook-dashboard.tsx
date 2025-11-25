@@ -267,26 +267,25 @@ export function WebhookDashboard() {
                 )}
 
                 {topLevelTriggers.length > 0 && (
-                  <div className="flex flex-col flex-1 gap-6">
-                    <div className="rounded-lg border border-white/20 bg-black/40 backdrop-blur-md p-3 shadow-[0_0_15px_rgba(255,95,31,0.1)]">
-                      <h3 className="text-lg font-semibold text-white">Individual Triggers</h3>
-                    </div>
-                    <Card className="flex-1 border-white/20">
-                      <CardContent className="p-0">
-                        <TriggerTable
-                          triggers={topLevelTriggers}
-                          selectedTriggerId={highlightedTriggerId}
-                          onRowClick={handleRowClick}
-                          onEdit={handleEdit}
-                          onDelete={handleDelete}
-                          onStatusChange={handleStatusChange}
-                          onTest={handleTest}
-                          onShowHistory={handleShowHistory}
-                          onReset={handleReset}
-                        />
-                      </CardContent>
-                    </Card>
-                  </div>
+                  <Card className="flex flex-col flex-1 border-white/20">
+                    <CardHeader className="border-b border-white/10 pb-4">
+                      <CardTitle>Individual Triggers</CardTitle>
+                      <CardDescription>These triggers are not assigned to any folder.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0 flex-1">
+                      <TriggerTable
+                        triggers={topLevelTriggers}
+                        selectedTriggerId={highlightedTriggerId}
+                        onRowClick={handleRowClick}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                        onStatusChange={handleStatusChange}
+                        onTest={handleTest}
+                        onShowHistory={handleShowHistory}
+                        onReset={handleReset}
+                      />
+                    </CardContent>
+                  </Card>
                 )}
 
                 {folders.length === 0 && topLevelTriggers.length === 0 && (
