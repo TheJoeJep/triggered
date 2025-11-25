@@ -300,7 +300,7 @@ const SidebarInset = React.forwardRef<
     <div
       ref={ref}
       className={cn(
-        "flex-1 bg-background overflow-auto",
+        "flex-1 bg-transparent overflow-auto",
         className
       )}
       {...props}
