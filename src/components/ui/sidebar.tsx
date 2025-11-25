@@ -182,7 +182,7 @@ const Sidebar = React.forwardRef<
       return (
         <div
           className={cn(
-            "flex h-full w-[--sidebar-width] flex-col bg-black/80 backdrop-blur-xl border-r border-white/10 text-white",
+            "flex h-[calc(100vh-2rem)] m-4 w-[--sidebar-width] flex-col bg-black/40 backdrop-blur-md border border-white/20 rounded-lg shadow-[0_0_15px_rgba(255,95,31,0.1)] text-white",
             className
           )}
           ref={ref}
@@ -199,7 +199,7 @@ const Sidebar = React.forwardRef<
           <SheetContent
             data-sidebar="sidebar"
             data-mobile="true"
-            className="w-[--sidebar-width] bg-black/90 backdrop-blur-xl border-r border-white/10 p-0 text-white [&>button]:hidden"
+            className="w-[--sidebar-width] bg-black/90 backdrop-blur-xl border-r border-white/20 p-0 text-white [&>button]:hidden"
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -220,9 +220,9 @@ const Sidebar = React.forwardRef<
       <div
         ref={ref}
         className={cn(
-          "group hidden h-screen md:flex flex-col text-sidebar-foreground duration-200 transition-[width] ease-in-out sticky top-0",
+          "group hidden h-[calc(100vh-2rem)] md:flex flex-col text-sidebar-foreground duration-200 transition-[width] ease-in-out sticky top-4 left-4",
           "w-[--sidebar-width] data-[state=collapsed]:w-[--sidebar-width-icon]",
-          "border-r border-white/10",
+          "rounded-lg border border-white/20 bg-black/40 backdrop-blur-md shadow-[0_0_15px_rgba(255,95,31,0.1)]",
           className
         )}
         data-state={state}

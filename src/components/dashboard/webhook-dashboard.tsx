@@ -193,22 +193,24 @@ export function WebhookDashboard() {
   return (
     <>
       <div className="space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            {selectedFolder && <Folder className="h-6 w-6 text-muted-foreground" />}
-            <h2 className="text-2xl font-bold tracking-tight font-headline">{viewName}</h2>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline">
-              <Users className="mr-2 h-4 w-4" />
-              Manage Team
-            </Button>
-            <Button onClick={handleCreateNew} size="lg" disabled={loading || !canCreateTriggers}>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Create Trigger
-            </Button>
-          </div>
-        </div>
+        <Card className="border-white/20">
+          <CardContent className="p-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              {selectedFolder && <Folder className="h-6 w-6 text-muted-foreground" />}
+              <h2 className="text-2xl font-bold tracking-tight font-headline text-white">{viewName}</h2>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline">
+                <Users className="mr-2 h-4 w-4" />
+                Manage Team
+              </Button>
+              <Button onClick={handleCreateNew} size="lg" disabled={loading || !canCreateTriggers}>
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Create Trigger
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {!selectedOrganization && (
           <Card>
@@ -248,7 +250,9 @@ export function WebhookDashboard() {
               <div className="space-y-8">
                 {folders.length > 0 && (
                   <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-white/80 ml-1">Folders</h3>
+                    <div className="rounded-lg border border-white/20 bg-black/40 backdrop-blur-md p-3 shadow-[0_0_15px_rgba(255,95,31,0.1)]">
+                      <h3 className="text-lg font-semibold text-white">Folders</h3>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                       {folders.map(folder => (
                         <FolderCard
@@ -263,7 +267,9 @@ export function WebhookDashboard() {
 
                 {topLevelTriggers.length > 0 && (
                   <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-white/80 ml-1">Individual Triggers</h3>
+                    <div className="rounded-lg border border-white/20 bg-black/40 backdrop-blur-md p-3 shadow-[0_0_15px_rgba(255,95,31,0.1)]">
+                      <h3 className="text-lg font-semibold text-white">Individual Triggers</h3>
+                    </div>
                     <Card className="border-white/20">
                       <CardContent className="p-0">
                         <TriggerTable

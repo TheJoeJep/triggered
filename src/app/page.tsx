@@ -12,21 +12,21 @@ export default async function Home() {
           <FolderList />
         </Sidebar>
         <SidebarInset>
-          <div className="flex flex-col flex-1">
-            <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-4 border-b bg-background px-4 sm:h-auto sm:border-0 sm:bg-transparent sm:px-6 sm:py-4">
+          <div className="flex flex-col flex-1 p-4 gap-4">
+            <header className="flex h-16 items-center justify-between gap-4 rounded-lg border border-white/20 bg-black/40 backdrop-blur-md px-6 shadow-[0_0_15px_rgba(255,95,31,0.1)]">
               <div className="flex items-center gap-2">
                 <SidebarTrigger className="md:hidden" />
                 <Logo className="h-6 w-6" />
-                <h1 className="text-xl font-bold font-headline tracking-tight">
+                <h1 className="text-xl font-bold font-headline tracking-tight text-white">
                   Triggered App
                 </h1>
               </div>
               <OrganizationSwitcher />
             </header>
-            <main className="flex-1 p-4 sm:px-6 sm:py-0">
+            <main className="flex-1">
               <WebhookDashboard />
             </main>
-            <footer className="p-4 text-center text-sm text-muted-foreground">
+            <footer className="rounded-lg border border-white/20 bg-black/40 backdrop-blur-md p-4 text-center text-sm text-muted-foreground shadow-[0_0_15px_rgba(255,95,31,0.1)]">
               Your reliable partner in webhook scheduling.
             </footer>
           </div>
