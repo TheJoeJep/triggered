@@ -157,7 +157,7 @@ export function WebhookDashboard() {
       title: "Testing Trigger...",
       description: `Sending a ${trigger.method} request to the webhook.`,
     });
-    const success = await testTrigger(trigger);
+    const success = await testTrigger(trigger, selectedFolderId);
     if (success) {
       toast({
         title: "Test Successful",
