@@ -7,7 +7,7 @@ import { Logo } from "@/components/ui/logo";
 export default async function Home() {
   return (
     <SidebarProvider>
-      <div className="flex flex-row w-full bg-transparent min-h-screen">
+      <div className="flex flex-row w-full bg-transparent min-h-screen gap-4">
         <Sidebar>
           <FolderList />
         </Sidebar>
