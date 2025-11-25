@@ -192,7 +192,7 @@ export function WebhookDashboard() {
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="flex flex-col h-full gap-6">
         <Card className="border-white/20">
           <CardContent className="p-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -227,7 +227,7 @@ export function WebhookDashboard() {
         {selectedOrganization && (
           <>
             {selectedFolder ? (
-              <Card>
+              <Card className="flex-1 border-white/20">
                 <CardHeader>
                   <CardTitle>Scheduled Triggers</CardTitle>
                   <CardDescription>An overview of all triggers in the &quot;{selectedFolder.name}&quot; folder.</CardDescription>
@@ -246,10 +246,11 @@ export function WebhookDashboard() {
                   />
                 </CardContent>
               </Card>
+
             ) : (
-              <div className="space-y-8">
+              <div className="flex flex-col flex-1 gap-6">
                 {folders.length > 0 && (
-                  <div className="space-y-4">
+                  <div className="flex flex-col gap-6">
                     <div className="rounded-lg border border-white/20 bg-black/40 backdrop-blur-md p-3 shadow-[0_0_15px_rgba(255,95,31,0.1)]">
                       <h3 className="text-lg font-semibold text-white">Folders</h3>
                     </div>
@@ -266,11 +267,11 @@ export function WebhookDashboard() {
                 )}
 
                 {topLevelTriggers.length > 0 && (
-                  <div className="space-y-4">
+                  <div className="flex flex-col flex-1 gap-6">
                     <div className="rounded-lg border border-white/20 bg-black/40 backdrop-blur-md p-3 shadow-[0_0_15px_rgba(255,95,31,0.1)]">
                       <h3 className="text-lg font-semibold text-white">Individual Triggers</h3>
                     </div>
-                    <Card className="border-white/20">
+                    <Card className="flex-1 border-white/20">
                       <CardContent className="p-0">
                         <TriggerTable
                           triggers={topLevelTriggers}
@@ -289,9 +290,9 @@ export function WebhookDashboard() {
                 )}
 
                 {folders.length === 0 && topLevelTriggers.length === 0 && (
-                  <Card className="border-white/20">
-                    <CardContent className="pt-6">
-                      <div className="flex flex-col items-center justify-center h-[200px] space-y-4 p-8 text-center border-2 border-dashed border-white/10 rounded-lg">
+                  <Card className="flex-1 border-white/20">
+                    <CardContent className="pt-6 h-full flex flex-col justify-center">
+                      <div className="flex flex-col items-center justify-center space-y-4 p-8 text-center border-2 border-dashed border-white/10 rounded-lg">
                         <h2 className="text-xl font-bold tracking-tight font-headline text-white">No Triggers Yet</h2>
                         <p className="text-gray-400">Click the "Create Trigger" button to get started.</p>
                       </div>
@@ -302,7 +303,7 @@ export function WebhookDashboard() {
             )}
           </>
         )}
-      </div>
+      </div >
       <CreateTriggerSheet
         isOpen={isSheetOpen}
         onOpenChange={(isOpen) => {

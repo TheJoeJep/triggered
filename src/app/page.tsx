@@ -12,7 +12,7 @@ export default async function Home() {
           <FolderList />
         </Sidebar>
         <SidebarInset>
-          <div className="flex flex-col flex-1 p-4 gap-4">
+          <div className="flex flex-col flex-1 p-4 gap-6">
             <header className="flex h-16 items-center justify-between gap-4 rounded-lg border border-white/20 bg-black/40 backdrop-blur-md px-6 shadow-[0_0_15px_rgba(255,95,31,0.1)]">
               <div className="flex items-center gap-2">
                 <SidebarTrigger className="md:hidden" />
