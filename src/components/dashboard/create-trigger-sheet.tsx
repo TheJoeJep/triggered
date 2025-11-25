@@ -152,6 +152,7 @@ export function CreateTriggerSheet({
   }, [isOpen, trigger, form, currentFolderId]);
 
   function onSubmit(values: FormValues) {
+    console.log("Form submitted with values:", values);
     const [hours, minutes] = values.time.split(":").map(Number);
     const combinedDateTime = new Date(values.scheduledAt);
     combinedDateTime.setHours(hours, minutes, 0, 0);
@@ -185,7 +186,7 @@ export function CreateTriggerSheet({
       payload: (payload && Object.keys(payload).length > 0) ? payload : undefined,
     };
 
-    const targetFolderId = values.folderId === "null" ? null : values.folderId;
+    const targetFolderId = (values.folderId === "null" || !values.folderId) ? null : values.folderId;
     onSave(triggerData, targetFolderId, trigger?.id);
   }
 
@@ -209,7 +210,7 @@ export function CreateTriggerSheet({
           </SheetDescription>
         </SheetHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full overflow-hidden">
+          <form onSubmit={form.handleSubmit(onSubmit, (errors) => console.error("Form Validation Errors:", errors))} className="flex flex-col h-full overflow-hidden">
             <ScrollArea className="flex-1 pr-4 -mr-6">
               <div className="space-y-6 py-6">
                 <FormField

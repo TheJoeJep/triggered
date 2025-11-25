@@ -112,26 +112,35 @@ export function WebhookDashboard() {
   const handleSave = async (triggerData: Omit<Trigger, 'id' | 'status' | 'runCount' | 'executionHistory'>, folderId: string | null, id?: string) => {
     if (!selectedOrganization) return;
 
-    if (id) {
-      // Editing is simpler - we assume folder doesn't change.
-      // A more complex implementation could handle moving triggers between folders.
-      await updateTrigger(folderId, id, triggerData);
-      toast({
-        title: "Trigger Updated",
-        description: "Your webhook trigger has been successfully updated.",
-      });
-    } else {
-      if (folderId) {
-        await addTriggerToFolder(folderId, triggerData);
+    try {
+      if (id) {
+        // Editing is simpler - we assume folder doesn't change.
+        // A more complex implementation could handle moving triggers between folders.
+        await updateTrigger(folderId, id, triggerData);
+        toast({
+          title: "Trigger Updated",
+          description: "Your webhook trigger has been successfully updated.",
+        });
       } else {
-        await addTriggerToOrganization(triggerData);
+        if (folderId) {
+          await addTriggerToFolder(folderId, triggerData);
+        } else {
+          await addTriggerToOrganization(triggerData);
+        }
+        toast({
+          title: "Trigger Created",
+          description: "Your new webhook trigger is now active.",
+        });
       }
+      setIsSheetOpen(false);
+    } catch (error: any) {
+      console.error("Failed to save trigger:", error);
       toast({
-        title: "Trigger Created",
-        description: "Your new webhook trigger is now active.",
+        title: "Error Saving Trigger",
+        description: error.message || "An unexpected error occurred.",
+        variant: "destructive",
       });
     }
-    setIsSheetOpen(false);
   };
 
   const handleStatusChange = async (id: string, status: TriggerStatus) => {
