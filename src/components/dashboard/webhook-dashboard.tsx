@@ -245,14 +245,11 @@ export function WebhookDashboard() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-8">
                 {folders.length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Folders</CardTitle>
-                      <CardDescription>Organize your triggers into folders for better management.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-white/80 ml-1">Folders</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                       {folders.map(folder => (
                         <FolderCard
                           key={folder.id}
@@ -260,36 +257,33 @@ export function WebhookDashboard() {
                           onClick={() => setSelectedFolderId(folder.id)}
                         />
                       ))}
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </div>
                 )}
 
-                {(folders.length > 0 && topLevelTriggers.length > 0) && <Separator />}
-
                 {topLevelTriggers.length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Individual Triggers</CardTitle>
-                      <CardDescription>These triggers are not assigned to any folder.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <TriggerTable
-                        triggers={topLevelTriggers}
-                        selectedTriggerId={highlightedTriggerId}
-                        onRowClick={handleRowClick}
-                        onEdit={handleEdit}
-                        onDelete={handleDelete}
-                        onStatusChange={handleStatusChange}
-                        onTest={handleTest}
-                        onShowHistory={handleShowHistory}
-                        onReset={handleReset}
-                      />
-                    </CardContent>
-                  </Card>
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-white/80 ml-1">Individual Triggers</h3>
+                    <Card className="border-white/20">
+                      <CardContent className="p-0">
+                        <TriggerTable
+                          triggers={topLevelTriggers}
+                          selectedTriggerId={highlightedTriggerId}
+                          onRowClick={handleRowClick}
+                          onEdit={handleEdit}
+                          onDelete={handleDelete}
+                          onStatusChange={handleStatusChange}
+                          onTest={handleTest}
+                          onShowHistory={handleShowHistory}
+                          onReset={handleReset}
+                        />
+                      </CardContent>
+                    </Card>
+                  </div>
                 )}
 
                 {folders.length === 0 && topLevelTriggers.length === 0 && (
-                  <Card>
+                  <Card className="border-white/20">
                     <CardContent className="pt-6">
                       <div className="flex flex-col items-center justify-center h-[200px] space-y-4 p-8 text-center border-2 border-dashed border-white/10 rounded-lg">
                         <h2 className="text-xl font-bold tracking-tight font-headline text-white">No Triggers Yet</h2>

@@ -100,7 +100,7 @@ export function TriggerTable({
 
   return (
     <TooltipProvider>
-      <div className="rounded-md border border-white/10 bg-black/40 backdrop-blur-md">
+      <div className="rounded-md">
         <Table>
           <TableHeader>
             <TableRow>
