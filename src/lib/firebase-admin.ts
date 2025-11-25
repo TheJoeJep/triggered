@@ -16,13 +16,13 @@ if (process.env.NODE_ENV === 'development') {
   }
 }
 
-let dbInstance: admin.firestore.Firestore | undefined;
+let dbInstanceNamed: admin.firestore.Firestore | undefined;
 let authInstance: admin.auth.Auth | undefined;
 let initError: string | null = null;
 
 function initializeFirebaseAdmin() {
-  if (dbInstance && authInstance) {
-    return { db: dbInstance, auth: authInstance };
+  if (dbInstanceNamed && authInstance) {
+    return { db: dbInstanceNamed, auth: authInstance };
   }
 
   try {
@@ -31,27 +31,31 @@ function initializeFirebaseAdmin() {
     console.log(`[FirebaseAdmin] NODE_ENV: ${process.env.NODE_ENV}`);
     console.log(`[FirebaseAdmin] Existing apps: ${admin.apps.length}`);
 
-    if (!admin.apps.length) {
+    const appName = 'webhook-time-machine';
+    const existingApp = admin.apps.find(a => a?.name === appName);
+
+    if (!existingApp) {
       if (process.env.FIREBASE_SERVICE_ACCOUNT) {
         // Local development with Service Account
         console.log('[FirebaseAdmin] Initializing with service account...');
         const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
         app = admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
-        });
+          projectId: 'webhook-time-machine'
+        }, appName);
       } else {
         // Local development with Emulators (Fallback) or ADC
         console.log('[FirebaseAdmin] Initializing for Emulators/ADC...');
-        app = admin.initializeApp({ projectId: 'demo-project' });
+        app = admin.initializeApp({ projectId: 'webhook-time-machine' }, appName);
       }
     } else {
-      console.log('[FirebaseAdmin] Using existing default app.');
-      app = admin.app();
+      console.log('[FirebaseAdmin] Using existing webhook app.');
+      app = existingApp;
     }
 
     console.log('[FirebaseAdmin] App initialized. Getting Firestore...');
-    dbInstance = getFirestore(app);
-    console.log(`[FirebaseAdmin] Firestore got: ${!!dbInstance}`);
+    dbInstanceNamed = getFirestore(app);
+    console.log(`[FirebaseAdmin] Firestore got: ${!!dbInstanceNamed}`);
 
     console.log('[FirebaseAdmin] Firestore got. Getting Auth...');
     authInstance = getAdminAuth(app);
@@ -63,7 +67,7 @@ function initializeFirebaseAdmin() {
     // We don't re-throw, so db/auth might be undefined.
   }
 
-  return { db: dbInstance, auth: authInstance };
+  return { db: dbInstanceNamed, auth: authInstance };
 }
 
 // Export a proxy or getter to ensure initialization happens on access

@@ -94,7 +94,12 @@ const processTrigger = async (
 
     } catch (error: any) {
         console.error(`[CRON-ERROR] Failed to execute trigger "${trigger.name}" (ID: ${trigger.id}):`, error.message);
-        updatedTriggerFields.status = 'failed';
+        // Don't set status to 'failed' for recurring triggers, otherwise they stop running forever.
+        // Only set to failed if it's a one-time trigger or if we want to stop it.
+        // For now, we'll keep it active so it retries on the next schedule.
+        // We could verify if it's one-time later in the finally block.
+        updatedTriggerFields.status = 'active';
+
         logEntry.error = error.message;
         if (error.response) {
             logEntry.responseStatus = error.response.status;
@@ -117,7 +122,11 @@ const processTrigger = async (
         }
 
         if (trigger.schedule.type === 'one-time') {
-            updatedTriggerFields.status = 'completed';
+            if (logEntry.status === 'success') {
+                updatedTriggerFields.status = 'completed';
+            } else {
+                updatedTriggerFields.status = 'failed';
+            }
             isCompleted = true;
         }
 
@@ -228,7 +237,15 @@ export async function GET() {
         }
 
         console.log(`[CRON] Job finished at ${new Date().toISOString()}`);
-        return NextResponse.json({ success: true, message: 'Cron job executed successfully.' });
+        return NextResponse.json({
+            success: true,
+            message: 'Cron job executed successfully.',
+            stats: {
+                organizations: organizationsSnapshot.docs.length,
+                dueTriggers: promises.length,
+                timestamp: now
+            }
+        });
     } catch (error) {
         console.error('[CRON-ERROR] Unhandled error in cron job:', error);
         return NextResponse.json({ success: false, message: 'Cron job failed.', error: String(error) }, { status: 500 });

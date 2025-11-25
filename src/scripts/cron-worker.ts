@@ -1,8 +1,8 @@
 
 import axios from 'axios';
 
-const CRON_URL = 'http://localhost:9002/api/cron';
 const INTERVAL_MS = 60 * 1000; // 1 minute
+const CRON_URL = 'http://localhost:9002/api/cron';
 
 async function runCron() {
     console.log(`[Worker] Pinging cron job at ${new Date().toISOString()}...`);
