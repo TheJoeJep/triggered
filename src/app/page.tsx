@@ -26,9 +26,7 @@ export default async function Home() {
             <main className="flex-1">
               <WebhookDashboard />
             </main>
-            <footer className="rounded-lg border border-white/20 bg-black/40 backdrop-blur-md p-4 text-center text-sm text-muted-foreground shadow-[0_0_15px_rgba(255,95,31,0.1)]">
-              Your reliable partner in webhook scheduling.
-            </footer>
+
           </div>
         </SidebarInset>
       </div>
