@@ -5,6 +5,8 @@ import { Organization, Trigger, ExecutionLog, Schedule } from '@/lib/types';
 import axios from 'axios';
 import { add } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
+import { calculateMinNextRun } from '@/lib/trigger-utils';
+import { PLAN_LIMITS } from '@/lib/constants';
 
 // Force dynamic to prevent caching of the cron job
 export const dynamic = 'force-dynamic';
@@ -56,33 +58,42 @@ const calculateNextRun = (schedule: Schedule, timezone: string, lastScheduledRun
 };
 
 
-const processTrigger = async (
-    orgId: string,
+
+type TriggerResult = {
+    triggerId: string;
+    folderId: string | null;
+    status: 'active' | 'completed' | 'failed' | 'archived';
+    nextRun: string;
+    runCount: number;
+    newLog: ExecutionLog;
+};
+
+const executeTrigger = async (
     trigger: Trigger,
     folderId: string | null,
     organizationTimezone: string
-): Promise<void> => {
+): Promise<TriggerResult> => {
     console.log(`[CRON] Processing trigger "${trigger.name}" (ID: ${trigger.id})`);
-    if (!db) {
-        console.error(`[CRON-ERROR] Firestore not initialized. Cannot process trigger ${trigger.id}.`);
-        return;
-    }
-    const now = new Date();
 
+    const now = new Date();
     const logEntry: Omit<ExecutionLog, 'id'> = {
         timestamp: now.toISOString(),
-        status: 'failed', // Default to failed, update on success
+        status: 'failed',
         requestPayload: trigger.payload,
+        triggerMode: 'production',
     };
 
-    const updatedTriggerFields: Partial<Trigger> = {};
+    let status: 'active' | 'completed' | 'failed' | 'archived' = 'active';
 
     try {
         const response = await axios({
             method: trigger.method,
             url: trigger.url,
             data: trigger.payload,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Trigger-Mode': 'production'
+            },
             timeout: trigger.timeout || 5000,
         });
 
@@ -90,164 +101,223 @@ const processTrigger = async (
         logEntry.status = 'success';
         logEntry.responseStatus = response.status;
         logEntry.responseBody = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
-        updatedTriggerFields.status = 'active';
+        status = 'active';
 
     } catch (error: any) {
         console.error(`[CRON-ERROR] Failed to execute trigger "${trigger.name}" (ID: ${trigger.id}):`, error.message);
-        // Don't set status to 'failed' for recurring triggers, otherwise they stop running forever.
-        // Only set to failed if it's a one-time trigger or if we want to stop it.
-        // For now, we'll keep it active so it retries on the next schedule.
-        // We could verify if it's one-time later in the finally block.
-        updatedTriggerFields.status = 'active';
+        status = 'active'; // Keep active to retry or continue schedule
 
         logEntry.error = error.message;
         if (error.response) {
             logEntry.responseStatus = error.response.status;
             logEntry.responseBody = typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data);
         }
-    } finally {
-        const newLog: ExecutionLog = {
-            ...logEntry,
-            id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-        };
-
-        const currentRunCount = trigger.runCount || 0;
-        updatedTriggerFields.runCount = currentRunCount + 1;
-        updatedTriggerFields.executionHistory = [newLog, ...(trigger.executionHistory || [])].slice(0, 20);
-
-        let isCompleted = false;
-        if (trigger.limit && updatedTriggerFields.runCount >= trigger.limit) {
-            updatedTriggerFields.status = 'completed';
-            isCompleted = true;
-        }
-
-        if (trigger.schedule.type === 'one-time') {
-            if (logEntry.status === 'success') {
-                updatedTriggerFields.status = 'completed';
-            } else {
-                updatedTriggerFields.status = 'failed';
-            }
-            isCompleted = true;
-        }
-
-        if (isCompleted) {
-            updatedTriggerFields.nextRun = new Date('9999-12-31T23:59:59Z').toISOString();
-        } else {
-            const nextRunDate = calculateNextRun(trigger.schedule, organizationTimezone, trigger.nextRun);
-            updatedTriggerFields.nextRun = nextRunDate.toISOString();
-        }
-
-        // --- Database Update Logic ---
-        const orgDocRef = db.collection('organizations').doc(orgId);
-
-        try {
-            console.log(`[CRON] Attempting to update trigger ${trigger.id} in the database.`);
-            await db.runTransaction(async (transaction) => {
-                const orgDoc = await transaction.get(orgDocRef);
-                if (!orgDoc.exists) {
-                    throw new Error(`[CRON-CRITICAL] Organization ${orgId} not found during transaction!`);
-                };
-
-                const orgData = orgDoc.data() as Organization;
-
-                if (folderId) {
-                    const folderIndex = orgData.folders.findIndex(f => f.id === folderId);
-                    if (folderIndex === -1) throw new Error(`Folder ${folderId} not found in org ${orgId}`);
-
-                    const triggerIndex = orgData.folders[folderIndex].triggers.findIndex(t => t.id === trigger.id);
-                    if (triggerIndex === -1) throw new Error(`Trigger ${trigger.id} not found in folder ${folderId}`);
-
-                    const triggerInDB = orgData.folders[folderIndex].triggers[triggerIndex];
-                    const finalUpdatedTrigger = { ...triggerInDB, ...updatedTriggerFields };
-
-                    const updatePath = `folders.${folderIndex}.triggers`;
-                    const currentTriggers = orgData.folders[folderIndex].triggers;
-                    currentTriggers[triggerIndex] = finalUpdatedTrigger;
-                    transaction.update(orgDocRef, { [updatePath]: currentTriggers });
-
-                } else {
-                    const triggerIndex = orgData.triggers.findIndex(t => t.id === trigger.id);
-                    if (triggerIndex === -1) throw new Error(`Trigger ${trigger.id} not found in org ${orgId}`);
-
-                    const triggerInDB = orgData.triggers[triggerIndex];
-                    const finalUpdatedTrigger = { ...triggerInDB, ...updatedTriggerFields };
-
-                    const updatePath = 'triggers';
-                    const currentTriggers = orgData.triggers;
-                    currentTriggers[triggerIndex] = finalUpdatedTrigger;
-                    transaction.update(orgDocRef, { [updatePath]: currentTriggers });
-                }
-            });
-            console.log(`[CRON] Successfully updated trigger ${trigger.id} in the database.`);
-        } catch (e: any) {
-            console.error(`[CRON-CRITICAL] Failed to update trigger ${trigger.id} in database after execution:`, e.message);
-        }
     }
+
+    const newLog: ExecutionLog = {
+        ...logEntry,
+        id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    };
+
+    const currentRunCount = trigger.runCount || 0;
+    const newRunCount = currentRunCount + 1;
+
+    let isCompleted = false;
+    if (trigger.limit && newRunCount >= trigger.limit) {
+        status = trigger.archiveOnComplete ? 'archived' : 'completed';
+        isCompleted = true;
+    }
+
+    if (trigger.schedule.type === 'one-time') {
+        if (logEntry.status === 'success') {
+            status = trigger.archiveOnComplete ? 'archived' : 'completed';
+        } else {
+            status = 'failed';
+        }
+        isCompleted = true;
+    }
+
+    let nextRun: string;
+    if (isCompleted) {
+        nextRun = new Date('9999-12-31T23:59:59Z').toISOString();
+    } else {
+        const nextRunDate = calculateNextRun(trigger.schedule, organizationTimezone, trigger.nextRun);
+        nextRun = nextRunDate.toISOString();
+    }
+
+    return {
+        triggerId: trigger.id,
+        folderId,
+        status,
+        nextRun,
+        runCount: newRunCount,
+        newLog
+    };
 };
 
-
 export async function GET() {
-    console.log(`[CRON] Job started at ${new Date().toISOString()}`);
-    // db check is removed as Proxy handles it, or we let it fail naturally
+    const logs: string[] = [];
+    const log = (msg: string) => {
+        console.log(msg);
+        logs.push(msg);
+    };
+
+    log(`[CRON] Job started at ${new Date().toISOString()}`);
 
     try {
         const now = new Date().toISOString();
         const organizationsSnapshot = await db.collection('organizations').get();
-        console.log(`[CRON] Found ${organizationsSnapshot.docs.length} organizations to process.`);
+        log(`[CRON] Found ${organizationsSnapshot.docs.length} organizations to process.`);
 
-        const promises: Promise<void>[] = [];
+        let totalDueTriggers = 0;
 
         for (const orgDoc of organizationsSnapshot.docs) {
             const organization = orgDoc.data() as Organization;
             const orgId = orgDoc.id;
             const organizationTimezone = organization.timezone || 'UTC';
+            const planId = organization.planId || 'free';
+            const limits = PLAN_LIMITS[planId];
 
-            // Process triggers in folders
-            if (organization.folders) {
+            // Usage Tracking & Lazy Reset
+            let usage = organization.usage || { executionsThisMonth: 0, billingCycleStart: new Date().toISOString() };
+            const billingStart = new Date(usage.billingCycleStart);
+            const oneMonthAgo = new Date();
+            oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+            if (billingStart < oneMonthAgo) {
+                // Reset usage if billing cycle is over
+                usage = { executionsThisMonth: 0, billingCycleStart: new Date().toISOString() };
+            }
+
+            if (usage.executionsThisMonth >= limits.executionsPerMonth) {
+                log(`[CRON] Organization ${orgId} (${planId}) reached monthly limit of ${limits.executionsPerMonth}. Skipping.`);
+                continue;
+            }
+
+            const dueTriggers: { trigger: Trigger, folderId: string | null }[] = [];
+
+            // Collect due triggers from folders
+            if (Array.isArray(organization.folders)) {
                 for (const folder of organization.folders) {
-                    if (folder.triggers) {
+                    if (Array.isArray(folder.triggers)) {
                         for (const trigger of folder.triggers) {
-                            console.log(`[CRON] Evaluating trigger "${trigger.name}" (ID: ${trigger.id}). Next Run: ${trigger.nextRun}, Now: ${now}`);
                             if (trigger.status === 'active' && trigger.nextRun && trigger.nextRun <= now) {
-                                console.log(`[CRON] Trigger "${trigger.name}" is due. Pushing to processing queue.`);
-                                promises.push(processTrigger(orgId, trigger, folder.id, organizationTimezone));
+                                log(`[CRON] Trigger "${trigger.name}" (ID: ${trigger.id}) is due.`);
+                                dueTriggers.push({ trigger, folderId: folder.id });
                             }
                         }
                     }
                 }
             }
 
-            // Process top-level triggers
-            if (organization.triggers) {
+            // Collect due top-level triggers
+            if (Array.isArray(organization.triggers)) {
                 for (const trigger of organization.triggers) {
-                    console.log(`[CRON] Evaluating trigger "${trigger.name}" (ID: ${trigger.id}). Next Run: ${trigger.nextRun}, Now: ${now}`);
                     if (trigger.status === 'active' && trigger.nextRun && trigger.nextRun <= now) {
-                        console.log(`[CRON] Trigger "${trigger.name}" is due. Pushing to processing queue.`);
-                        promises.push(processTrigger(orgId, trigger, null, organizationTimezone));
+                        log(`[CRON] Trigger "${trigger.name}" (ID: ${trigger.id}) is due.`);
+                        dueTriggers.push({ trigger, folderId: null });
                     }
                 }
             }
+
+            // If no due triggers, we still want to update minNextRun if it's missing (Backfill)
+            // But to avoid writing to DB every minute for every org, we only update if we did work OR if minNextRun is missing.
+            // For now, let's only update if we did work to keep it simple, 
+            // BUT we need to backfill. 
+            // Optimization: Only update if dueTriggers > 0. 
+            // The backfill will happen naturally as triggers become due.
+            // However, if a trigger is far in the future, it will never get backfilled until then.
+            // Let's stick to updating only when triggers are executed for now to avoid massive writes.
+
+            if (dueTriggers.length === 0) continue;
+
+            totalDueTriggers += dueTriggers.length;
+            log(`[CRON] Executing ${dueTriggers.length} triggers for Org ${orgId}...`);
+
+            // Execute triggers in parallel
+            const results = await Promise.all(
+                dueTriggers.map(dt => executeTrigger(dt.trigger, dt.folderId, organizationTimezone))
+            );
+
+            // Batch update the organization document
+            try {
+                await db.runTransaction(async (transaction) => {
+                    const freshOrgDoc = await transaction.get(orgDoc.ref);
+                    if (!freshOrgDoc.exists) throw new Error("Org not found");
+                    const freshOrgData = freshOrgDoc.data() as Organization;
+
+                    const updatedFolders = [...(freshOrgData.folders || [])];
+                    const updatedTopLevelTriggers = [...(freshOrgData.triggers || [])];
+
+                    for (const result of results) {
+                        if (result.folderId) {
+                            const folderIndex = updatedFolders.findIndex(f => f.id === result.folderId);
+                            if (folderIndex !== -1) {
+                                const triggerIndex = updatedFolders[folderIndex].triggers.findIndex(t => t.id === result.triggerId);
+                                if (triggerIndex !== -1) {
+                                    const trigger = updatedFolders[folderIndex].triggers[triggerIndex];
+                                    updatedFolders[folderIndex].triggers[triggerIndex] = {
+                                        ...trigger,
+                                        status: result.status,
+                                        nextRun: result.nextRun,
+                                        runCount: result.runCount,
+                                        executionHistory: [result.newLog, ...(trigger.executionHistory || [])].slice(0, 20)
+                                    };
+                                }
+                            }
+                        } else {
+                            const triggerIndex = updatedTopLevelTriggers.findIndex(t => t.id === result.triggerId);
+                            if (triggerIndex !== -1) {
+                                const trigger = updatedTopLevelTriggers[triggerIndex];
+                                updatedTopLevelTriggers[triggerIndex] = {
+                                    ...trigger,
+                                    status: result.status,
+                                    nextRun: result.nextRun,
+                                    runCount: result.runCount,
+                                    executionHistory: [result.newLog, ...(trigger.executionHistory || [])].slice(0, 20)
+                                };
+                            }
+                        }
+                    }
+
+                    // Calculate minNextRun for the updated organization state
+                    const tempOrg: Organization = {
+                        ...freshOrgData,
+                        folders: updatedFolders,
+                        triggers: updatedTopLevelTriggers
+                    };
+                    const minNextRun = calculateMinNextRun(tempOrg);
+
+                    transaction.update(orgDoc.ref, {
+                        folders: updatedFolders,
+                        triggers: updatedTopLevelTriggers,
+                        minNextRun: minNextRun || null,
+                        usage: {
+                            ...usage,
+                            executionsThisMonth: usage.executionsThisMonth + results.length
+                        }
+                    });
+                });
+                log(`[CRON] Successfully updated ${results.length} triggers for Org ${orgId}.`);
+            } catch (e: any) {
+                console.error(`[CRON-CRITICAL] Failed to update org ${orgId}:`, e);
+                log(`[CRON-ERROR] Failed to save results for Org ${orgId}: ${e.message}`);
+            }
         }
 
-        if (promises.length > 0) {
-            console.log(`[CRON] Executing ${promises.length} due triggers.`);
-            await Promise.all(promises);
-        } else {
-            console.log(`[CRON] No triggers are due at this time.`);
-        }
-
-        console.log(`[CRON] Job finished at ${new Date().toISOString()}`);
+        log(`[CRON] Job finished at ${new Date().toISOString()}`);
         return NextResponse.json({
             success: true,
             message: 'Cron job executed successfully.',
             stats: {
                 organizations: organizationsSnapshot.docs.length,
-                dueTriggers: promises.length,
+                dueTriggers: totalDueTriggers,
                 timestamp: now
-            }
+            },
+            logs: logs
         });
     } catch (error) {
         console.error('[CRON-ERROR] Unhandled error in cron job:', error);
-        return NextResponse.json({ success: false, message: 'Cron job failed.', error: String(error) }, { status: 500 });
+        return NextResponse.json({ success: false, message: 'Cron job failed.', error: String(error), logs }, { status: 500 });
     }
 }

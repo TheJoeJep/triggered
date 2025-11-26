@@ -39,13 +39,33 @@ export function ExecutionHistoryDialog({
               logs.map((log) => (
                 <div key={log.id} className="p-4 border border-white/10 bg-white/5 rounded-lg space-y-4">
                   <div className="flex justify-between items-center">
-                    <h3 className="font-semibold">
-                      {format(new Date(log.timestamp), "yyyy-MM-dd HH:mm:ss 'UTC'")}
-                    </h3>
-                    <Badge variant={log.status === 'success' ? 'default' : 'destructive'} className="capitalize">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold">
+                        {format(new Date(log.timestamp), "yyyy-MM-dd HH:mm:ss 'UTC'")}
+                      </h3>
+                      {log.triggerMode && (
+                        <Badge variant="outline" className="text-xs uppercase tracking-wider">
+                          {log.triggerMode}
+                        </Badge>
+                      )}
+                    </div>
+                    <Badge
+                      variant={
+                        log.status === 'success' ? 'default' :
+                          log.status === 'failed' ? 'destructive' :
+                            'secondary' // for reset
+                      }
+                      className="capitalize"
+                    >
                       {log.status} {log.responseStatus && `(${log.responseStatus})`}
                     </Badge>
                   </div>
+
+                  {log.status === 'reset' && (
+                    <div className="text-sm text-muted-foreground">
+                      Trigger run count reset and scheduled for next minute.
+                    </div>
+                  )}
 
                   {log.requestPayload && (
                     <div>

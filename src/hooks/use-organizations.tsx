@@ -173,52 +173,58 @@ export function useOrganizations() {
   }, [user, fetchOrganizations, setSelectedOrgId]);
 
   const addTriggerToFolder = useCallback(async (folderId: string, triggerData: Omit<Trigger, 'id' | 'status' | 'runCount' | 'executionHistory'>) => {
-    if (!selectedOrganization) return;
+    if (!selectedOrganization || !user) return;
 
     let finalSchedule: Schedule = triggerData.schedule;
     if ((finalSchedule as any).type === 'daily') {
       finalSchedule = { type: 'interval', amount: 1, unit: 'days' };
     }
 
-    console.log(`[ACTION] Creating new trigger "${triggerData.name}" in folder ${folderId}`);
-    const newTrigger: Trigger = {
-      ...triggerData,
-      schedule: finalSchedule,
-      id: `trigger-${Date.now()}`,
-      status: "active",
-      runCount: 0,
-      executionHistory: [],
-    };
+    console.log(`[ACTION] Creating new trigger "${triggerData.name}" in folder ${folderId} via API`);
 
-    const updatedFolders = selectedOrganization.folders.map(folder =>
-      folder.id === folderId
-        ? { ...folder, triggers: [...folder.triggers, newTrigger] }
-        : folder
-    );
-    await updateOrganizationData(selectedOrganization.id, { folders: updatedFolders });
-  }, [selectedOrganization, updateOrganizationData]);
+    const token = await user.getIdToken();
+    try {
+      await axios.post('/api/dashboard/triggers', {
+        ...triggerData,
+        schedule: finalSchedule,
+        orgId: selectedOrganization.id,
+        folderId: folderId
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      await fetchOrganizations();
+    } catch (error: any) {
+      console.error("Failed to create trigger via API:", error);
+      throw new Error(error.response?.data?.error || error.message);
+    }
+  }, [selectedOrganization, user, fetchOrganizations]);
 
   const addTriggerToOrganization = useCallback(async (triggerData: Omit<Trigger, 'id' | 'status' | 'runCount' | 'executionHistory'>) => {
-    if (!selectedOrganization) return;
+    if (!selectedOrganization || !user) return;
 
     let finalSchedule: Schedule = triggerData.schedule;
     if ((finalSchedule as any).type === 'daily') {
       finalSchedule = { type: 'interval', amount: 1, unit: 'days' };
     }
 
-    console.log(`[ACTION] Creating new trigger "${triggerData.name}" in organization root`);
-    const newTrigger: Trigger = {
-      ...triggerData,
-      schedule: finalSchedule,
-      id: `trigger-${Date.now()}`,
-      status: "active",
-      runCount: 0,
-      executionHistory: [],
-    };
+    console.log(`[ACTION] Creating new trigger "${triggerData.name}" in organization root via API`);
 
-    const updatedTriggers = [...selectedOrganization.triggers, newTrigger];
-    await updateOrganizationData(selectedOrganization.id, { triggers: updatedTriggers });
-  }, [selectedOrganization, updateOrganizationData]);
+    const token = await user.getIdToken();
+    try {
+      await axios.post('/api/dashboard/triggers', {
+        ...triggerData,
+        schedule: finalSchedule,
+        orgId: selectedOrganization.id,
+        folderId: null
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      await fetchOrganizations();
+    } catch (error: any) {
+      console.error("Failed to create trigger via API:", error);
+      throw new Error(error.response?.data?.error || error.message);
+    }
+  }, [selectedOrganization, user, fetchOrganizations]);
 
 
   const updateTrigger = useCallback(async (folderId: string | null, triggerId: string, triggerData: Partial<Omit<Trigger, 'id'>>) => {
@@ -311,6 +317,7 @@ export function useOrganizations() {
       timestamp: new Date().toISOString(),
       status: 'failed',
       requestPayload: trigger.payload,
+      triggerMode: 'test',
     };
 
     try {
@@ -318,7 +325,10 @@ export function useOrganizations() {
         method: trigger.method,
         url: trigger.url,
         data: trigger.payload,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Trigger-Mode': 'test'
+        },
         timeout: trigger.timeout || 5000,
       });
       console.log(`[ACTION] Test for trigger ${trigger.id} was successful.`);
@@ -366,10 +376,27 @@ export function useOrganizations() {
 
     console.log(`[ACTION] Resetting trigger ${triggerId} to next minute: ${nextMinute.toISOString()}`);
 
+    // Find the trigger to get current history
+    let currentTrigger: Trigger | undefined;
+    if (folderId) {
+      const folder = selectedOrganization.folders.find(f => f.id === folderId);
+      currentTrigger = folder?.triggers.find(t => t.id === triggerId);
+    } else {
+      currentTrigger = selectedOrganization.triggers.find(t => t.id === triggerId);
+    }
+
+    const newLog: ExecutionLog = {
+      id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: now.toISOString(),
+      status: 'reset',
+      triggerMode: 'manual',
+    };
+
     const partialUpdate: Partial<Trigger> = {
       runCount: 0,
       nextRun: nextMinute.toISOString(),
       status: 'active',
+      executionHistory: [newLog, ...(currentTrigger?.executionHistory || [])].slice(0, 20),
     };
 
     await updateTrigger(folderId, triggerId, partialUpdate);

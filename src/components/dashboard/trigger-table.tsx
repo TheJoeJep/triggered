@@ -90,6 +90,9 @@ export function TriggerTable({
       case "failed":
         badgeVariant = "destructive";
         break;
+      case "archived":
+        badgeVariant = "secondary";
+        break;
     }
     return (
       <Badge variant={badgeVariant} className="capitalize">
@@ -166,53 +169,64 @@ export function TriggerTable({
                     <TimeCountdown nextRun={trigger.nextRun} status={trigger.status} />
                   </TableCell>
                   <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0" onClick={(e) => e.stopPropagation()}>
-                          <span className="sr-only">Open menu</span>
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenuItem onClick={() => onTest(trigger)}>
-                          <PlayCircle className="mr-2 h-4 w-4" />
-                          <span>Test Trigger</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => onEdit(trigger)}>
-                          <Edit className="mr-2 h-4 w-4" />
-                          <span>Edit</span>
-                        </DropdownMenuItem>
-                        {trigger.status === 'paused' && (
-                          <DropdownMenuItem onClick={() => onStatusChange(trigger.id, 'active')}>
-                            <Play className="mr-2 h-4 w-4" />
-                            <span>Resume</span>
+                    <div className="flex items-center justify-end gap-1">
+                      {trigger.status === 'active' && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); onStatusChange(trigger.id, 'paused'); }}>
+                              <Pause className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Pause Trigger</TooltipContent>
+                        </Tooltip>
+                      )}
+                      {trigger.status === 'paused' && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); onStatusChange(trigger.id, 'active'); }}>
+                              <Play className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Resume Trigger</TooltipContent>
+                        </Tooltip>
+                      )}
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0" onClick={(e) => e.stopPropagation()}>
+                            <span className="sr-only">Open menu</span>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenuItem onClick={() => onTest(trigger)}>
+                            <PlayCircle className="mr-2 h-4 w-4" />
+                            <span>Test Trigger</span>
                           </DropdownMenuItem>
-                        )}
-                        {trigger.status === 'active' && (
-                          <DropdownMenuItem onClick={() => onStatusChange(trigger.id, 'paused')}>
-                            <Pause className="mr-2 h-4 w-4" />
-                            <span>Pause</span>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => onEdit(trigger)}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            <span>Edit</span>
                           </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem onClick={() => onReset(trigger)}>
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                          <span>Reset to next minute</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onShowHistory(trigger)}>
-                          <History className="mr-2 h-4 w-4" />
-                          <span>History</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => onDelete(trigger.id)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          <span>Delete</span>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          <DropdownMenuItem onClick={() => onReset(trigger)}>
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            <span>Reset to next minute</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onShowHistory(trigger)}>
+                            <History className="mr-2 h-4 w-4" />
+                            <span>History</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => onDelete(trigger.id)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            <span>Delete</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

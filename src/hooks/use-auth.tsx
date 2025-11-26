@@ -8,8 +8,8 @@ import {
   useEffect,
   ReactNode,
 } from "react";
-import { 
-  onAuthStateChanged, 
+import {
+  onAuthStateChanged,
   signInWithPopup,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -17,7 +17,7 @@ import {
   EmailAuthProvider,
   linkWithCredential,
   signOut as firebaseSignOut,
-  User 
+  User
 } from "firebase/auth";
 import { auth, googleProvider, db } from "@/lib/firebase";
 import { doc, setDoc, getDoc, writeBatch, collection } from "firebase/firestore";
@@ -48,79 +48,79 @@ const generateApiKey = (length = 32) => {
 
 
 const createInitialUserData = async (user: User) => {
-    const userDocRef = doc(db, "users", user.uid);
-    console.log("Creating initial data for new user:", user.uid);
-    
-    const batch = writeBatch(db);
-    
-    const displayName = user.displayName || user.email?.split('@')[0] || 'New User';
-    
-    if (!user.displayName) {
-      await updateProfile(user, { displayName });
-    }
+  const userDocRef = doc(db, "users", user.uid);
+  console.log("Creating initial data for new user:", user.uid);
 
-    const newOrgRef = doc(collection(db, "organizations"));
-    const orgId = newOrgRef.id;
+  const batch = writeBatch(db);
 
-    const welcomeTrigger: Omit<Trigger, 'id' | 'status' | 'runCount' | 'executionHistory'> = {
-        name: "Welcome Trigger",
-        url: "https://api.example.com/v1/sync",
-        method: "POST",
-        nextRun: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        schedule: { type: "daily" },
-        payload: { "message": "Welcome to Triggered App!" },
-    };
+  const displayName = user.displayName || user.email?.split('@')[0] || 'New User';
 
-    const initialFolder: Folder = {
-        id: `folder-${Date.now()}`,
-        name: "My First Project",
-        triggers: [{ ...welcomeTrigger, id: `trigger-${Date.now()}`, status: "active", runCount: 0, executionHistory: [] }],
-    };
-    
-    const newMember: Member = {
+  if (!user.displayName) {
+    await updateProfile(user, { displayName });
+  }
+
+  const newOrgRef = doc(collection(db, "organizations"));
+  const orgId = newOrgRef.id;
+
+  const welcomeTrigger: Omit<Trigger, 'id' | 'status' | 'runCount' | 'executionHistory'> = {
+    name: "Welcome Trigger",
+    url: "https://api.example.com/v1/sync",
+    method: "POST",
+    nextRun: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    schedule: { type: "interval", amount: 1, unit: "days" },
+    payload: { "message": "Welcome to Triggered App!" },
+  };
+
+  const initialFolder: Folder = {
+    id: `folder-${Date.now()}`,
+    name: "My First Project",
+    triggers: [{ ...welcomeTrigger, id: `trigger-${Date.now()}`, status: "active", runCount: 0, executionHistory: [] }],
+  };
+
+  const newMember: Member = {
+    uid: user.uid,
+    email: user.email!,
+    role: 'owner',
+    displayName: displayName,
+    photoURL: user.photoURL || null,
+  }
+
+  const newOrganization: Organization = {
+    id: orgId,
+    name: `${displayName}'s Organization`,
+    owner: {
       uid: user.uid,
-      email: user.email!,
-      role: 'owner',
-      displayName: displayName,
       photoURL: user.photoURL || null,
-    }
-
-    const newOrganization: Organization = {
-      id: orgId,
-      name: `${displayName}'s Organization`,
-      owner: {
-        uid: user.uid,
-        photoURL: user.photoURL || null,
-        email: user.email,
-        displayName: displayName,
-      },
-      members: [newMember],
-      memberUids: [user.uid],
-      folders: [initialFolder],
-      triggers: [],
-      apiKey: generateApiKey(),
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
-    };
-    
-    batch.set(newOrgRef, newOrganization);
-
-    const userData: UserData = {
-      uid: user.uid,
       email: user.email,
       displayName: displayName,
-      photoURL: user.photoURL,
-      organizations: [orgId],
-    };
+    },
+    members: [newMember],
+    memberUids: [user.uid],
+    folders: [initialFolder],
+    triggers: [],
+    apiKey: generateApiKey(),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
+  };
 
-    batch.set(userDocRef, userData);
-    
-    try {
-        await batch.commit();
-        console.log("Initial data created successfully for user:", user.uid);
-    } catch(e) {
-        console.error("Failed to create initial user data", e);
-        throw e;
-    }
+  batch.set(newOrgRef, newOrganization);
+
+  const userData: UserData = {
+    uid: user.uid,
+    email: user.email,
+    displayName: displayName,
+    photoURL: user.photoURL,
+    organizations: [orgId],
+  };
+
+  batch.set(userDocRef, userData);
+
+  try {
+    await batch.commit();
+    console.log("Initial data created successfully for user:", user.uid);
+  } catch (e) {
+    console.error("Failed to create initial user data", e);
+    throw e;
+  }
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -130,28 +130,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setLoading(true);
-      if (firebaseUser) {
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDoc = await getDoc(userDocRef);
+      try {
+        if (firebaseUser) {
+          const userDocRef = doc(db, 'users', firebaseUser.uid);
+          const userDoc = await getDoc(userDocRef);
 
-        if (!userDoc.exists()) {
-          try {
-            await createInitialUserData(firebaseUser);
-            const freshUser = auth.currentUser;
-            await freshUser?.reload(); // Reload to get updated profile info
-            setUser(auth.currentUser);
-          } catch(e) {
-            console.error("Failed to create and set initial user data", e);
-            await firebaseSignOut(auth);
-            setUser(null);
+          if (!userDoc.exists()) {
+            try {
+              await createInitialUserData(firebaseUser);
+              const freshUser = auth.currentUser;
+              await freshUser?.reload(); // Reload to get updated profile info
+              setUser(auth.currentUser);
+            } catch (e) {
+              console.error("Failed to create and set initial user data", e);
+              await firebaseSignOut(auth);
+              setUser(null);
+            }
+          } else {
+            setUser(firebaseUser);
           }
         } else {
-           setUser(firebaseUser);
+          setUser(null);
         }
-      } else {
+      } catch (error) {
+        console.error("Error in auth state change handler:", error);
         setUser(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -161,9 +167,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
       console.error("Error signing in with Google: ", error);
-    } 
+    }
   };
-  
+
   const signInWithEmail = async (email: string, pass: string) => {
     try {
       await signInWithEmailAndPassword(auth, email, pass);
@@ -173,7 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return false;
     }
   }
-  
+
   const signUpWithEmail = async (email: string, pass: string) => {
     try {
       await createUserWithEmailAndPassword(auth, email, pass);
@@ -198,10 +204,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await updateProfile(user, { displayName: name });
       const userDocRef = doc(db, "users", user.uid);
       await setDoc(userDocRef, { displayName: name }, { merge: true });
-      
+
       const updatedUser = Object.assign(Object.create(Object.getPrototypeOf(user)), user);
       updatedUser.displayName = name;
-      setUser(updatedUser); 
+      setUser(updatedUser);
       return true;
     } catch (error) {
       console.error("Error updating display name: ", error);

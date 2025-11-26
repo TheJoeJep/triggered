@@ -33,75 +33,75 @@ export function OrganizationSwitcher() {
   const handleCreateOrg = async (name: string) => {
     await createOrganization(name);
     toast({
-        title: "Organization Created",
-        description: `The "${name}" organization has been successfully created.`,
+      title: "Organization Created",
+      description: `The "${name}" organization has been successfully created.`,
     });
   };
 
   if (loading) {
     return (
-        <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
-            <div className="h-5 w-24 rounded bg-muted animate-pulse" />
-        </div>
+      <div className="flex items-center gap-2">
+        <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+        <div className="h-5 w-24 rounded bg-muted animate-pulse" />
+      </div>
     )
   }
 
   return (
     <>
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          className="w-auto justify-start p-2 h-auto"
-        >
-          <div className="flex items-center gap-2">
-            {selectedOrganization ? (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            className="w-auto justify-start p-2 h-auto"
+          >
+            <div className="flex items-center gap-2">
+              {selectedOrganization ? (
                 <Avatar className="h-6 w-6">
-                    <AvatarImage src={selectedOrganization?.owner.photoURL} alt={selectedOrganization?.name} />
-                    <AvatarFallback>{selectedOrganization?.name.charAt(0).toUpperCase()}</AvatarFallback>
+                  <AvatarImage src={selectedOrganization?.owner.photoURL || undefined} alt={selectedOrganization?.name} />
+                  <AvatarFallback>{selectedOrganization?.name.charAt(0).toUpperCase()}</AvatarFallback>
                 </Avatar>
-            ) : (
+              ) : (
                 <Avatar className="h-6 w-6">
-                    <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || 'User'} />
-                    <AvatarFallback><UserIcon className="h-4 w-4" /></AvatarFallback>
+                  <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || 'User'} />
+                  <AvatarFallback><UserIcon className="h-4 w-4" /></AvatarFallback>
                 </Avatar>
-            )}
-            <span className="truncate font-semibold text-sm max-w-[150px]">
-              {selectedOrganization?.name || user?.displayName || "Personal Account"}
-            </span>
-          </div>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-64" align="end">
-        <DropdownMenuLabel>{user?.displayName || "My Account"}</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-           <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Organizations</DropdownMenuLabel>
-          {organizations.map((org) => (
-            <DropdownMenuItem
-              key={org.id}
-              onClick={() => setSelectedOrgId(org.id)}
-              className="text-sm"
-              disabled={org.id === selectedOrgId}
-            >
-              <Avatar className="mr-2 h-5 w-5">
-                <AvatarImage src={org.owner.photoURL} alt={org.name} />
-                <AvatarFallback>{org.name.charAt(0).toUpperCase()}</AvatarFallback>
-              </Avatar>
-              <span>{org.name}</span>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => setIsOrgDialogOpen(true)}>
-          <PlusCircle className="mr-2 h-5 w-5" />
-          Create Organization
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-    <AddOrganizationDialog isOpen={isOrgDialogOpen} onOpenChange={setIsOrgDialogOpen} onAddOrganization={handleCreateOrg} />
+              )}
+              <span className="truncate font-semibold text-sm max-w-[150px]">
+                {selectedOrganization?.name || user?.displayName || "Personal Account"}
+              </span>
+            </div>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-64" align="end">
+          <DropdownMenuLabel>{user?.displayName || "My Account"}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Organizations</DropdownMenuLabel>
+            {organizations.map((org) => (
+              <DropdownMenuItem
+                key={org.id}
+                onClick={() => setSelectedOrgId(org.id)}
+                className="text-sm"
+                disabled={org.id === selectedOrgId}
+              >
+                <Avatar className="mr-2 h-5 w-5">
+                  <AvatarImage src={org.owner.photoURL} alt={org.name} />
+                  <AvatarFallback>{org.name.charAt(0).toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <span>{org.name}</span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setIsOrgDialogOpen(true)}>
+            <PlusCircle className="mr-2 h-5 w-5" />
+            Create Organization
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <AddOrganizationDialog isOpen={isOrgDialogOpen} onOpenChange={setIsOrgDialogOpen} onAddOrganization={handleCreateOrg} />
     </>
   )
 }

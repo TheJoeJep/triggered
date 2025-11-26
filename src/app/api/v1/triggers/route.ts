@@ -4,6 +4,21 @@ import { db } from '@/lib/firebase-admin';
 import { withAuthentication, AuthenticatedRequest } from '../middleware';
 import type { Trigger, Organization, Schedule } from '@/lib/types';
 import { z } from 'zod';
+import { PLAN_LIMITS } from '@/lib/constants';
+import { IntervalUnit } from '@/lib/types';
+
+function getIntervalInMinutes(amount: number, unit: IntervalUnit): number {
+    switch (unit) {
+        case 'seconds': return amount / 60;
+        case 'minutes': return amount;
+        case 'hours': return amount * 60;
+        case 'days': return amount * 60 * 24;
+        case 'weeks': return amount * 60 * 24 * 7;
+        case 'months': return amount * 60 * 24 * 30; // Approx
+        case 'years': return amount * 60 * 24 * 365; // Approx
+        default: return 0;
+    }
+}
 
 const createTriggerSchema = z.object({
     name: z.string().min(1),
@@ -19,12 +34,13 @@ const createTriggerSchema = z.object({
     payload: z.record(z.any()).optional(),
     limit: z.number().optional(),
     timeout: z.number().int().positive().optional(),
+    archiveOnComplete: z.boolean().optional(),
 });
 
 
 export const GET = withAuthentication(async (req) => {
     const { organization } = req;
-    
+
     const allTriggers = [
         ...organization.triggers,
         ...organization.folders.flatMap(f => f.triggers)
@@ -42,13 +58,36 @@ export const POST = withAuthentication(async (req) => {
     if (!validation.success) {
         return NextResponse.json({ error: 'Invalid request body', details: validation.error.flatten() }, { status: 400 });
     }
-    
+
     const { folderId, ...triggerData } = validation.data;
-    
+
+    const planId = organization.planId || 'free';
+    const limits = PLAN_LIMITS[planId];
+
+    // 1. Check Trigger Count Limit
+    const currentTriggerCount = organization.triggers.length + organization.folders.reduce((acc, f) => acc + f.triggers.length, 0);
+    if (currentTriggerCount >= limits.triggers) {
+        return NextResponse.json({
+            error: `Plan limit reached. You can only have ${limits.triggers} triggers on the ${planId} plan.`,
+            code: 'LIMIT_REACHED'
+        }, { status: 403 });
+    }
+
+    // 2. Check Minimum Interval Limit
     // Normalize the schedule data
-    let finalSchedule: Schedule = triggerData.schedule;
+    let finalSchedule: Schedule = triggerData.schedule as any;
     if ((triggerData.schedule as any).type === 'daily') {
         finalSchedule = { type: 'interval', amount: 1, unit: 'days' };
+    }
+
+    if (finalSchedule.type === 'interval') {
+        const intervalInMinutes = getIntervalInMinutes(finalSchedule.amount, finalSchedule.unit);
+        if (intervalInMinutes < limits.minIntervalMinutes) {
+            return NextResponse.json({
+                error: `Minimum interval for ${planId} plan is ${limits.minIntervalMinutes} minutes.`,
+                code: 'INVALID_INTERVAL'
+            }, { status: 400 });
+        }
     }
 
     const newTrigger: Trigger = {
@@ -59,8 +98,11 @@ export const POST = withAuthentication(async (req) => {
         runCount: 0,
         executionHistory: [],
     };
-    
+
     const orgDocRef = db.collection('organizations').doc(organization.id);
+
+    const currentMin = organization.minNextRun;
+    const newMin = (!currentMin || newTrigger.nextRun < currentMin) ? newTrigger.nextRun : currentMin;
 
     if (folderId) {
         const folderExists = organization.folders.some(f => f.id === folderId);
@@ -73,10 +115,14 @@ export const POST = withAuthentication(async (req) => {
             }
             return f;
         });
-        await orgDocRef.update({ folders: updatedFolders });
+        await orgDocRef.update({
+            folders: updatedFolders,
+            minNextRun: newMin
+        });
     } else {
         await orgDocRef.update({
-            triggers: [...organization.triggers, newTrigger]
+            triggers: [...organization.triggers, newTrigger],
+            minNextRun: newMin
         });
     }
 

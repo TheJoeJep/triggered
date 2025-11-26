@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import type { Organization } from '@/lib/types';
@@ -7,7 +8,7 @@ export type AuthenticatedRequest = NextRequest & {
 };
 
 export type AuthenticatedContext = {
-    params: Record<string, string>;
+  params: Record<string, string>;
 };
 
 export type AuthenticatedRouteHandler = (req: AuthenticatedRequest, context: AuthenticatedContext) => Promise<NextResponse>;
@@ -16,9 +17,16 @@ export type AuthenticatedRouteHandler = (req: AuthenticatedRequest, context: Aut
 export function withAuthentication(handler: AuthenticatedRouteHandler) {
   return async (req: NextRequest, context: AuthenticatedContext) => {
     if (!db) {
-        return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
-      
+
+    try {
+      // Force init check
+      const _ = db.collection('organizations');
+    } catch (e) {
+      return new NextResponse(`DB Init failed: ${String(e)}`, { status: 500 });
+    }
+
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return NextResponse.json({ error: 'Authorization header is required' }, { status: 401 });
@@ -40,14 +48,16 @@ export function withAuthentication(handler: AuthenticatedRouteHandler) {
 
       const orgDoc = querySnapshot.docs[0];
       const organization = orgDoc.data() as Organization;
-      
+      // FIX: Attach the doc ID to the object
+      organization.id = orgDoc.id;
+
       const authenticatedReq = req as AuthenticatedRequest;
       authenticatedReq.organization = organization;
 
-      return handler(authenticatedReq, context);
+      return await handler(authenticatedReq, context);
     } catch (error) {
       console.error('API Authentication Error:', error);
-      return NextResponse.json({ error: 'Internal server error during authentication' }, { status: 500 });
+      return NextResponse.json({ error: `Internal server error: ${String(error)}` }, { status: 500 });
     }
   };
 }

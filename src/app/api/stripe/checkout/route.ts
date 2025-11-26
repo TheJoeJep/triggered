@@ -1,0 +1,90 @@
+import { NextResponse } from 'next/server';
+import { stripe } from '@/lib/stripe';
+import { withUserAuthentication } from '@/lib/user-middleware';
+import { db } from '@/lib/firebase-admin';
+import { z } from 'zod';
+
+const checkoutSchema = z.object({
+    planId: z.enum(['hobbyist', 'pro', 'business']),
+    redirectUrl: z.string().url(),
+    organizationId: z.string(),
+});
+
+const PLAN_PRICE_IDS = {
+    hobbyist: process.env.STRIPE_PRICE_ID_HOBBYIST,
+    pro: process.env.STRIPE_PRICE_ID_PRO,
+    business: process.env.STRIPE_PRICE_ID_BUSINESS,
+};
+
+export const POST = withUserAuthentication(async (req) => {
+    const { user } = req;
+    const body = await req.json();
+
+    const validation = checkoutSchema.safeParse(body);
+    if (!validation.success) {
+        return NextResponse.json({ error: 'Invalid request body', details: validation.error.flatten() }, { status: 400 });
+    }
+
+    const { planId, redirectUrl, organizationId } = validation.data;
+    const priceId = PLAN_PRICE_IDS[planId];
+
+    if (!priceId) {
+        return NextResponse.json({ error: `Price ID for plan ${planId} is not configured.` }, { status: 500 });
+    }
+
+    // Verify organization access
+    const orgDoc = await db.collection('organizations').doc(organizationId).get();
+    if (!orgDoc.exists) {
+        return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+    }
+
+    const organization = orgDoc.data();
+    if (!organization?.memberUids.includes(user.uid)) {
+        return NextResponse.json({ error: 'Unauthorized: You are not a member of this organization' }, { status: 403 });
+    }
+
+    try {
+        // Check if org already has a stripe customer ID
+        let customerId = organization.stripeCustomerId;
+
+        if (!customerId) {
+            const customer = await stripe.customers.create({
+                email: user.email || undefined,
+                name: organization.name,
+                metadata: {
+                    organizationId: organizationId,
+                },
+            });
+            customerId = customer.id;
+
+            // Update org with customer ID immediately
+            await orgDoc.ref.update({ stripeCustomerId: customerId });
+        }
+
+        const session = await stripe.checkout.sessions.create({
+            customer: customerId,
+            line_items: [
+                {
+                    price: priceId,
+                    quantity: 1,
+                },
+            ],
+            mode: 'subscription',
+            success_url: `${redirectUrl}?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${redirectUrl}?canceled=true`,
+            client_reference_id: organizationId,
+            allow_promotion_codes: true,
+            subscription_data: {
+                metadata: {
+                    organizationId: organizationId,
+                    planId: planId,
+                },
+            },
+        });
+
+        return NextResponse.json({ sessionId: session.id, url: session.url });
+    } catch (error: any) {
+        console.error('Error creating checkout session:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+});

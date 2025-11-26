@@ -31,25 +31,21 @@ function initializeFirebaseAdmin() {
     console.log(`[FirebaseAdmin] NODE_ENV: ${process.env.NODE_ENV}`);
     console.log(`[FirebaseAdmin] Existing apps: ${admin.apps.length}`);
 
-    const appName = 'webhook-time-machine';
+    const appName = 'trigger-app';
     const existingApp = admin.apps.find(a => a?.name === appName);
 
     if (!existingApp) {
-      if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-        // Local development with Service Account
-        console.log('[FirebaseAdmin] Initializing with service account...');
-        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-        app = admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-          projectId: 'webhook-time-machine'
-        }, appName);
+      if (process.env.NODE_ENV === 'development') {
+        // Local development with Emulators
+        console.log('[FirebaseAdmin] Initializing for Local Emulators...');
+        app = admin.initializeApp({ projectId: 'demo-project' }, appName);
       } else {
-        // Local development with Emulators (Fallback) or ADC
-        console.log('[FirebaseAdmin] Initializing for Emulators/ADC...');
-        app = admin.initializeApp({ projectId: 'webhook-time-machine' }, appName);
+        // Production - Use Application Default Credentials
+        console.log('[FirebaseAdmin] Initializing for Production...');
+        app = admin.initializeApp({}, appName);
       }
     } else {
-      console.log('[FirebaseAdmin] Using existing webhook app.');
+      console.log('[FirebaseAdmin] Using existing app.');
       app = existingApp;
     }
 

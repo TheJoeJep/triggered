@@ -44,6 +44,9 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import type { Trigger, HttpMethod, Schedule, Folder as FolderType } from "@/lib/types";
 import { Switch } from "../ui/switch";
+import { UpgradeDialog } from "@/components/upgrade-dialog";
+import { PLAN_LIMITS } from "@/lib/constants";
+import { useOrganizations } from "@/hooks/use-organizations";
 
 const payloadItemSchema = z.object({
   key: z.string().min(1, "Key cannot be empty."),
@@ -66,6 +69,7 @@ const formSchema = z.object({
   limit: z.coerce.number().int().positive().optional(),
   timeout: z.coerce.number().int().positive().optional(),
   payload: z.array(payloadItemSchema).optional(),
+  archiveOnComplete: z.boolean().default(false),
 }).superRefine((data, ctx) => {
   if (data.isRecurring) {
     if (data.intervalAmount === undefined || data.intervalAmount <= 0) {
@@ -96,6 +100,10 @@ export function CreateTriggerSheet({
   folders,
   currentFolderId,
 }: CreateTriggerSheetProps) {
+  const { selectedOrganization } = useOrganizations();
+  const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState("");
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -107,6 +115,7 @@ export function CreateTriggerSheet({
       payload: [],
       folderId: currentFolderId || "null",
       timeout: 5000,
+      archiveOnComplete: false,
     },
   });
 
@@ -145,6 +154,7 @@ export function CreateTriggerSheet({
 
             return { key, value: stringValue, type };
           }) : [],
+          archiveOnComplete: trigger.archiveOnComplete || false,
         });
       } else {
         form.reset({
@@ -158,6 +168,7 @@ export function CreateTriggerSheet({
           timeout: 5000,
           payload: [],
           folderId: currentFolderId || "null",
+          archiveOnComplete: false,
         });
       }
     }
@@ -171,6 +182,24 @@ export function CreateTriggerSheet({
 
     let schedule: Schedule;
     if (values.isRecurring && values.intervalAmount && values.intervalUnit) {
+      // Check plan limits for interval
+      const currentPlan = selectedOrganization?.planId || 'free';
+      const minInterval = PLAN_LIMITS[currentPlan].minIntervalMinutes;
+
+      let intervalInMinutes = values.intervalAmount;
+      if (values.intervalUnit === 'seconds') intervalInMinutes = values.intervalAmount / 60;
+      else if (values.intervalUnit === 'hours') intervalInMinutes = values.intervalAmount * 60;
+      else if (values.intervalUnit === 'days') intervalInMinutes = values.intervalAmount * 60 * 24;
+      else if (values.intervalUnit === 'weeks') intervalInMinutes = values.intervalAmount * 60 * 24 * 7;
+      else if (values.intervalUnit === 'months') intervalInMinutes = values.intervalAmount * 60 * 24 * 30; // approx
+      else if (values.intervalUnit === 'years') intervalInMinutes = values.intervalAmount * 60 * 24 * 365; // approx
+
+      if (intervalInMinutes < minInterval) {
+        setUpgradeMessage(`Your current plan (${currentPlan}) requires a minimum interval of ${minInterval} minutes. Upgrade to reduce this limit.`);
+        setShowUpgradeDialog(true);
+        return;
+      }
+
       schedule = { type: "interval", amount: values.intervalAmount, unit: values.intervalUnit };
     } else {
       schedule = { type: "one-time" };
@@ -204,6 +233,7 @@ export function CreateTriggerSheet({
       ...(values.limit !== undefined ? { limit: values.limit } : {}),
       ...(values.timeout !== undefined ? { timeout: values.timeout } : {}),
       ...((payload && Object.keys(payload).length > 0) ? { payload } : {}),
+      archiveOnComplete: values.archiveOnComplete,
     };
 
     const targetFolderId = (values.folderId === "null" || !values.folderId) ? null : values.folderId;
@@ -551,6 +581,32 @@ export function CreateTriggerSheet({
                     </FormItem>
                   )}
                 />
+
+                <FormField
+                  control={form.control}
+                  name="archiveOnComplete"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border border-white/10 bg-white/5 p-4">
+                      <div className="space-y-0.5">
+                        <FormLabel className="text-base text-white">
+                          Archive on Completion
+                        </FormLabel>
+                        <SheetDescription className="text-xs text-gray-400">
+                          Automatically archive this trigger when the run limit is reached.
+                        </SheetDescription>
+                        <FormMessage />
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          className="data-[state=checked]:bg-primary"
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name="timeout"
@@ -588,6 +644,12 @@ export function CreateTriggerSheet({
           </form>
         </Form>
       </SheetContent>
+      <UpgradeDialog
+        open={showUpgradeDialog}
+        onOpenChange={setShowUpgradeDialog}
+        title="Upgrade Required"
+        description={upgradeMessage}
+      />
     </Sheet>
   );
 }
