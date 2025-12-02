@@ -64,7 +64,7 @@ export function DocSidebar() {
                                     <SidebarMenuButton asChild>
                                         <a href={item.url}>
                                             <Hash className="mr-2 h-4 w-4" />
-                                            <span>{item.title}</span>
+                                            <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
                                         </a>
                                     </SidebarMenuButton>
                                 </SidebarMenuItem>
@@ -83,7 +83,7 @@ export function DocSidebar() {
                                         <SidebarMenuButton asChild>
                                             <a href={subItem.url}>
                                                 <Hash className="mr-2 h-4 w-4" />
-                                                <span>{subItem.title}</span>
+                                                <span className="group-data-[collapsible=icon]:hidden">{subItem.title}</span>
                                             </a>
                                         </SidebarMenuButton>
                                     </SidebarMenuItem>
