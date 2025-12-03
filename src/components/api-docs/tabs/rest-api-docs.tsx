@@ -176,6 +176,155 @@ export function RestApiDocs() {
                     </Card>
                 </div>
             </div>
+
+            <Separator />
+
+            <div className="space-y-8">
+                <h3 className="text-2xl font-bold tracking-tight">Folders</h3>
+
+                <div id="get-all-folders" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-green-600 border-green-600">GET</Badge>
+                                <CardTitle className="font-mono text-lg">/folders</CardTitle>
+                            </div>
+                            <CardDescription>
+                                Retrieves a list of all folders within the authenticated organization.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <CodeBlock>
+                                GET /api/v1/folders
+                            </CodeBlock>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div id="create-folder" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-blue-600 border-blue-600">POST</Badge>
+                                <CardTitle className="font-mono text-lg">/folders</CardTitle>
+                            </div>
+                            <CardDescription>
+                                Creates a new folder.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Field</TableHead>
+                                        <TableHead>Type</TableHead>
+                                        <TableHead>Required</TableHead>
+                                        <TableHead>Description</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow>
+                                        <TableCell className="font-mono">name</TableCell>
+                                        <TableCell>string</TableCell>
+                                        <TableCell>Yes</TableCell>
+                                        <TableCell>The name of the folder.</TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+
+                            <div>
+                                <p className="text-sm font-medium mb-2">Example Request Body</p>
+                                <CodeBlock>
+                                    {`{
+  "name": "Marketing Campaigns"
+}`}
+                                </CodeBlock>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div id="get-folder" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-green-600 border-green-600">GET</Badge>
+                                <CardTitle className="font-mono text-lg">/folders/:id</CardTitle>
+                            </div>
+                            <CardDescription>
+                                Retrieves a specific folder by ID.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <CodeBlock>
+                                GET /api/v1/folders/folder_12345
+                            </CodeBlock>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div id="update-folder" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-yellow-600 border-yellow-600">PUT</Badge>
+                                <CardTitle className="font-mono text-lg">/folders/:id</CardTitle>
+                            </div>
+                            <CardDescription>
+                                Updates a folder's details.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Field</TableHead>
+                                        <TableHead>Type</TableHead>
+                                        <TableHead>Required</TableHead>
+                                        <TableHead>Description</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow>
+                                        <TableCell className="font-mono">name</TableCell>
+                                        <TableCell>string</TableCell>
+                                        <TableCell>No</TableCell>
+                                        <TableCell>The new name of the folder.</TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+
+                            <div>
+                                <p className="text-sm font-medium mb-2">Example Request Body</p>
+                                <CodeBlock>
+                                    {`{
+  "name": "Updated Marketing Campaigns"
+}`}
+                                </CodeBlock>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div id="delete-folder" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-red-600 border-red-600">DELETE</Badge>
+                                <CardTitle className="font-mono text-lg">/folders/:id</CardTitle>
+                            </div>
+                            <CardDescription>
+                                Deletes a folder. Note: This may delete all triggers within the folder.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <CodeBlock>
+                                DELETE /api/v1/folders/folder_12345
+                            </CodeBlock>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
         </div>
     );
 }

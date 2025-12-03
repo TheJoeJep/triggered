@@ -12,6 +12,25 @@ export function ZapierDocs() {
                 </p>
             </div>
 
+            <div id="authentication" className="space-y-4">
+                <h3 className="text-2xl font-bold tracking-tight">Authentication</h3>
+                <p>
+                    All API requests must be authenticated using your organization's API key.
+                    You can find your API key in the <a href="/settings" className="text-primary underline">Settings</a> page.
+                </p>
+                <Card>
+                    <CardContent className="pt-6">
+                        <p className="mb-4">
+                            In Zapier's <strong>Webhooks by Zapier</strong> action, add a header:
+                        </p>
+                        <ul className="list-disc list-inside ml-4 text-sm text-muted-foreground">
+                            <li><strong>Key:</strong> Authorization</li>
+                            <li><strong>Value:</strong> Bearer YOUR_API_KEY</li>
+                        </ul>
+                    </CardContent>
+                </Card>
+            </div>
+
             <div className="space-y-6">
                 <Card>
                     <CardHeader>
@@ -45,6 +64,46 @@ export function ZapierDocs() {
                                 If creating or updating, add your JSON payload in the <strong>Data</strong> field.
                             </li>
                         </ol>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Folder API Endpoints</CardTitle>
+                        <CardDescription>
+                            You can also manage folders via Zapier using the following endpoints.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="p-4 border rounded-lg">
+                                <h4 className="font-medium">Get All Folders</h4>
+                                <p className="text-sm text-muted-foreground mb-2">Method: GET</p>
+                                <code className="text-xs bg-muted p-1 rounded">https://triggeredapp.com/api/v1/folders</code>
+                            </div>
+                            <div className="p-4 border rounded-lg">
+                                <h4 className="font-medium">Create Folder</h4>
+                                <p className="text-sm text-muted-foreground mb-2">Method: POST</p>
+                                <code className="text-xs bg-muted p-1 rounded">https://triggeredapp.com/api/v1/folders</code>
+                                <p className="text-xs text-muted-foreground mt-2">Body: {`{ "name": "Folder Name" }`}</p>
+                            </div>
+                            <div className="p-4 border rounded-lg">
+                                <h4 className="font-medium">Get Folder</h4>
+                                <p className="text-sm text-muted-foreground mb-2">Method: GET</p>
+                                <code className="text-xs bg-muted p-1 rounded">https://triggeredapp.com/api/v1/folders/:id</code>
+                            </div>
+                            <div className="p-4 border rounded-lg">
+                                <h4 className="font-medium">Update Folder</h4>
+                                <p className="text-sm text-muted-foreground mb-2">Method: PUT</p>
+                                <code className="text-xs bg-muted p-1 rounded">https://triggeredapp.com/api/v1/folders/:id</code>
+                                <p className="text-xs text-muted-foreground mt-2">Body: {`{ "name": "New Name" }`}</p>
+                            </div>
+                            <div className="p-4 border rounded-lg">
+                                <h4 className="font-medium">Delete Folder</h4>
+                                <p className="text-sm text-muted-foreground mb-2">Method: DELETE</p>
+                                <code className="text-xs bg-muted p-1 rounded">https://triggeredapp.com/api/v1/folders/:id</code>
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
             </div>
