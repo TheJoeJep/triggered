@@ -31,7 +31,7 @@ export default function ApiDocsPage() {
                             </div>
                             <div className="flex items-center gap-4">
                                 <Button variant="outline" asChild>
-                                    <a href="/" target="_blank" rel="noopener noreferrer">
+                                    <a href="/">
                                         Back to Dashboard
                                     </a>
                                 </Button>

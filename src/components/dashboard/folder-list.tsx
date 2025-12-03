@@ -206,9 +206,11 @@ export function FolderList() {
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <SidebarMenuButton isActive={pathname === '/api-docs'} onClick={() => router.push('/api-docs')} tooltip="API Docs">
-                            <Code />
-                            <span>API Docs</span>
+                        <SidebarMenuButton isActive={pathname === '/api-docs'} tooltip="API Docs" asChild>
+                            <a href="/api-docs" target="_blank" rel="noopener noreferrer">
+                                <Code />
+                                <span className="group-data-[collapsible=icon]:hidden">API Docs</span>
+                            </a>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
