@@ -135,6 +135,34 @@ export function N8nDocs() {
                                         body={`{ "name": "n8n Trigger", "url": "https://...", "method": "POST", "schedule": { "type": "daily" }, "nextRun": "${new Date().toISOString()}" }`}
                                     />
                                 </div>
+
+                                <div className="p-4 border rounded-lg space-y-3">
+                                    <h4 className="font-medium">Get Trigger</h4>
+                                    <p className="text-sm text-muted-foreground">Retrieve a specific trigger by ID.</p>
+                                    <CopyN8nButton method="GET" url="/api/v1/triggers/TRIGGER_ID" />
+                                </div>
+
+                                <div className="p-4 border rounded-lg space-y-3">
+                                    <h4 className="font-medium">Update Trigger</h4>
+                                    <p className="text-sm text-muted-foreground">Update a trigger's details.</p>
+                                    <CopyN8nButton
+                                        method="PUT"
+                                        url="/api/v1/triggers/TRIGGER_ID"
+                                        body={`{ "name": "Updated Trigger Name", "status": "paused" }`}
+                                    />
+                                </div>
+
+                                <div className="p-4 border rounded-lg space-y-3">
+                                    <h4 className="font-medium">Delete Trigger</h4>
+                                    <p className="text-sm text-muted-foreground">Delete a trigger.</p>
+                                    <CopyN8nButton method="DELETE" url="/api/v1/triggers/TRIGGER_ID" />
+                                </div>
+
+                                <div className="p-4 border rounded-lg space-y-3">
+                                    <h4 className="font-medium">Test Trigger (Ping)</h4>
+                                    <p className="text-sm text-muted-foreground">Immediately execute a trigger.</p>
+                                    <CopyN8nButton method="POST" url="/api/v1/triggers/TRIGGER_ID/ping" />
+                                </div>
                             </div>
                         </div>
 

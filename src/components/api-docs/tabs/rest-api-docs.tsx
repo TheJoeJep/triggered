@@ -175,6 +175,113 @@ export function RestApiDocs() {
                         </CardContent>
                     </Card>
                 </div>
+
+                <div id="get-trigger" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-green-600 border-green-600">GET</Badge>
+                                <CardTitle className="font-mono text-lg">/triggers/:id</CardTitle>
+                            </div>
+                            <CardDescription>
+                                Retrieves a specific trigger by ID.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <CodeBlock>
+                                GET /api/v1/triggers/trigger_12345
+                            </CodeBlock>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div id="update-trigger" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-yellow-600 border-yellow-600">PUT</Badge>
+                                <CardTitle className="font-mono text-lg">/triggers/:id</CardTitle>
+                            </div>
+                            <CardDescription>
+                                Updates a trigger's details.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Field</TableHead>
+                                        <TableHead>Type</TableHead>
+                                        <TableHead>Required</TableHead>
+                                        <TableHead>Description</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow>
+                                        <TableCell className="font-mono">name</TableCell>
+                                        <TableCell>string</TableCell>
+                                        <TableCell>No</TableCell>
+                                        <TableCell>The new name of the trigger.</TableCell>
+                                    </TableRow>
+                                    <TableRow>
+                                        <TableCell className="font-mono">status</TableCell>
+                                        <TableCell>enum</TableCell>
+                                        <TableCell>No</TableCell>
+                                        <TableCell>"active" or "paused".</TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+
+                            <div>
+                                <p className="text-sm font-medium mb-2">Example Request Body</p>
+                                <CodeBlock>
+                                    {`{
+  "name": "Updated Report Name",
+  "status": "paused"
+}`}
+                                </CodeBlock>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div id="delete-trigger" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-red-600 border-red-600">DELETE</Badge>
+                                <CardTitle className="font-mono text-lg">/triggers/:id</CardTitle>
+                            </div>
+                            <CardDescription>
+                                Deletes a trigger.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <CodeBlock>
+                                DELETE /api/v1/triggers/trigger_12345
+                            </CodeBlock>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div id="test-trigger" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-blue-600 border-blue-600">POST</Badge>
+                                <CardTitle className="font-mono text-lg">/triggers/:id/ping</CardTitle>
+                            </div>
+                            <CardDescription>
+                                Immediately executes the trigger (Test Run).
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <CodeBlock>
+                                POST /api/v1/triggers/trigger_12345/ping
+                            </CodeBlock>
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
 
             <Separator />

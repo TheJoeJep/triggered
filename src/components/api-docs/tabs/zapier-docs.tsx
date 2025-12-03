@@ -69,6 +69,51 @@ export function ZapierDocs() {
 
                 <Card>
                     <CardHeader>
+                        <CardTitle>Trigger API Endpoints</CardTitle>
+                        <CardDescription>
+                            Manage your triggers using these endpoints.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="p-4 border rounded-lg">
+                                <h4 className="font-medium">Get All Triggers</h4>
+                                <p className="text-sm text-muted-foreground mb-2">Method: GET</p>
+                                <code className="text-xs bg-muted p-1 rounded">https://triggeredapp.com/api/v1/triggers</code>
+                            </div>
+                            <div className="p-4 border rounded-lg">
+                                <h4 className="font-medium">Create Trigger</h4>
+                                <p className="text-sm text-muted-foreground mb-2">Method: POST</p>
+                                <code className="text-xs bg-muted p-1 rounded">https://triggeredapp.com/api/v1/triggers</code>
+                                <p className="text-xs text-muted-foreground mt-2">Body: {`{ "name": "...", "url": "...", ... }`}</p>
+                            </div>
+                            <div className="p-4 border rounded-lg">
+                                <h4 className="font-medium">Get Trigger</h4>
+                                <p className="text-sm text-muted-foreground mb-2">Method: GET</p>
+                                <code className="text-xs bg-muted p-1 rounded">https://triggeredapp.com/api/v1/triggers/:id</code>
+                            </div>
+                            <div className="p-4 border rounded-lg">
+                                <h4 className="font-medium">Update Trigger</h4>
+                                <p className="text-sm text-muted-foreground mb-2">Method: PUT</p>
+                                <code className="text-xs bg-muted p-1 rounded">https://triggeredapp.com/api/v1/triggers/:id</code>
+                                <p className="text-xs text-muted-foreground mt-2">Body: {`{ "name": "New Name" }`}</p>
+                            </div>
+                            <div className="p-4 border rounded-lg">
+                                <h4 className="font-medium">Delete Trigger</h4>
+                                <p className="text-sm text-muted-foreground mb-2">Method: DELETE</p>
+                                <code className="text-xs bg-muted p-1 rounded">https://triggeredapp.com/api/v1/triggers/:id</code>
+                            </div>
+                            <div className="p-4 border rounded-lg">
+                                <h4 className="font-medium">Test Trigger (Ping)</h4>
+                                <p className="text-sm text-muted-foreground mb-2">Method: POST</p>
+                                <code className="text-xs bg-muted p-1 rounded">https://triggeredapp.com/api/v1/triggers/:id/ping</code>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
                         <CardTitle>Folder API Endpoints</CardTitle>
                         <CardDescription>
                             You can also manage folders via Zapier using the following endpoints.
