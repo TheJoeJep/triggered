@@ -194,7 +194,7 @@ export default function LoginPage() {
       </Card>
 
       <p className="mt-8 text-center text-sm text-gray-400 drop-shadow-md">
-        Your reliable partner in webhook scheduling.
+        &copy; {new Date().getFullYear()} Triggered App
       </p>
     </div>
   );

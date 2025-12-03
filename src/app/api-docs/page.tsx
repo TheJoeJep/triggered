@@ -10,6 +10,7 @@ import { RestApiDocs } from "@/components/api-docs/tabs/rest-api-docs";
 import { N8nDocs } from "@/components/api-docs/tabs/n8n-docs";
 import { ZapierDocs } from "@/components/api-docs/tabs/zapier-docs";
 import { MakeDocs } from "@/components/api-docs/tabs/make-docs";
+import { Button } from "@/components/ui/button";
 
 export default function ApiDocsPage() {
     return (
@@ -28,9 +29,16 @@ export default function ApiDocsPage() {
                                     Triggered App
                                 </h1>
                             </div>
-                            <ErrorBoundary fallback={<div className="text-red-500 text-xs">Org Switcher Error</div>}>
-                                <OrganizationSwitcher />
-                            </ErrorBoundary>
+                            <div className="flex items-center gap-4">
+                                <Button variant="outline" asChild>
+                                    <a href="/" target="_blank" rel="noopener noreferrer">
+                                        Back to Dashboard
+                                    </a>
+                                </Button>
+                                <ErrorBoundary fallback={<div className="text-red-500 text-xs">Org Switcher Error</div>}>
+                                    <OrganizationSwitcher />
+                                </ErrorBoundary>
+                            </div>
                         </header>
                         <main className="flex-1 overflow-auto p-4 sm:px-6 sm:py-0">
                             <div className="mx-auto max-w-5xl space-y-8 py-8">
@@ -61,7 +69,7 @@ export default function ApiDocsPage() {
                             </div>
                         </main>
                         <footer className="p-4 text-center text-sm text-muted-foreground shrink-0">
-                            Your reliable partner in webhook scheduling.
+                            &copy; {new Date().getFullYear()} Triggered App
                         </footer>
                     </div>
                 </SidebarInset>
