@@ -206,8 +206,8 @@ export function FolderList() {
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <SidebarMenuButton isActive={pathname === '/api-docs'} tooltip="API Docs" asChild>
-                            <a href="/api-docs" target="_blank" rel="noopener noreferrer">
+                        <SidebarMenuButton isActive={pathname === '/docs'} tooltip="API Docs" asChild>
+                            <a href="/docs" target="_blank" rel="noopener noreferrer">
                                 <Code />
                                 <span className="group-data-[collapsible=icon]:hidden">API Docs</span>
                             </a>

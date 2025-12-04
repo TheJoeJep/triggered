@@ -1,15 +1,15 @@
 "use client";
 
 import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
-import { DocSidebar } from "@/components/api-docs/doc-sidebar";
+import { DocSidebar } from "@/components/docs/doc-sidebar";
 import { OrganizationSwitcher } from "@/components/dashboard/organization-switcher";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Logo } from "@/components/ui/logo";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RestApiDocs } from "@/components/api-docs/tabs/rest-api-docs";
-import { N8nDocs } from "@/components/api-docs/tabs/n8n-docs";
-import { ZapierDocs } from "@/components/api-docs/tabs/zapier-docs";
-import { MakeDocs } from "@/components/api-docs/tabs/make-docs";
+import { RestApiDocs } from "@/components/docs/tabs/rest-api-docs";
+import { N8nDocs } from "@/components/docs/tabs/n8n-docs";
+import { ZapierDocs } from "@/components/docs/tabs/zapier-docs";
+import { MakeDocs } from "@/components/docs/tabs/make-docs";
 import { Button } from "@/components/ui/button";
 
 export default function ApiDocsPage() {
