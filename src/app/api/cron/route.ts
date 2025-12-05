@@ -194,6 +194,58 @@ export async function GET() {
                 continue;
             }
 
+            // Enforce Trigger Limits
+            let activeTriggers: { trigger: Trigger, folderId: string | null }[] = [];
+
+            if (Array.isArray(organization.folders)) {
+                organization.folders.forEach(folder => {
+                    if (Array.isArray(folder.triggers)) {
+                        folder.triggers.forEach(trigger => {
+                            if (trigger.status === 'active') {
+                                activeTriggers.push({ trigger, folderId: folder.id });
+                            }
+                        });
+                    }
+                });
+            }
+            if (Array.isArray(organization.triggers)) {
+                organization.triggers.forEach(trigger => {
+                    if (trigger.status === 'active') {
+                        activeTriggers.push({ trigger, folderId: null });
+                    }
+                });
+            }
+
+            const triggersToPause: { triggerId: string, folderId: string | null }[] = [];
+
+            if (limits.triggers !== Infinity && activeTriggers.length > limits.triggers) {
+                log(`[CRON] Organization ${orgId} exceeds trigger limit (${activeTriggers.length} > ${limits.triggers}). Pausing excess triggers.`);
+
+                // Sort by nextRun (earliest first) to keep the most urgent ones
+                activeTriggers.sort((a, b) => {
+                    if (!a.trigger.nextRun) return 1;
+                    if (!b.trigger.nextRun) return -1;
+                    return new Date(a.trigger.nextRun).getTime() - new Date(b.trigger.nextRun).getTime();
+                });
+
+                // Keep the first 'limits.triggers'
+                const toPause = activeTriggers.slice(limits.triggers);
+
+                toPause.forEach(item => {
+                    triggersToPause.push({ triggerId: item.trigger.id, folderId: item.folderId });
+
+                    // Update in-memory organization so they aren't picked up as due
+                    if (item.folderId) {
+                        const folder = organization.folders.find(f => f.id === item.folderId);
+                        const trigger = folder?.triggers.find(t => t.id === item.trigger.id);
+                        if (trigger) trigger.status = 'paused';
+                    } else {
+                        const trigger = organization.triggers.find(t => t.id === item.trigger.id);
+                        if (trigger) trigger.status = 'paused';
+                    }
+                });
+            }
+
             const dueTriggers: { trigger: Trigger, folderId: string | null }[] = [];
 
             // Collect due triggers from folders
@@ -229,10 +281,15 @@ export async function GET() {
             // However, if a trigger is far in the future, it will never get backfilled until then.
             // Let's stick to updating only when triggers are executed for now to avoid massive writes.
 
-            if (dueTriggers.length === 0) continue;
+            if (dueTriggers.length === 0 && triggersToPause.length === 0) continue;
 
             totalDueTriggers += dueTriggers.length;
-            log(`[CRON] Executing ${dueTriggers.length} triggers for Org ${orgId}...`);
+            if (dueTriggers.length > 0) {
+                log(`[CRON] Executing ${dueTriggers.length} triggers for Org ${orgId}...`);
+            }
+            if (triggersToPause.length > 0) {
+                log(`[CRON] Pausing ${triggersToPause.length} triggers for Org ${orgId} due to plan limits.`);
+            }
 
             // Execute triggers in parallel
             const results = await Promise.all(
@@ -280,6 +337,30 @@ export async function GET() {
                         }
                     }
 
+                    // Apply Paused Status for Excess Triggers
+                    for (const pauseItem of triggersToPause) {
+                        if (pauseItem.folderId) {
+                            const folderIndex = updatedFolders.findIndex(f => f.id === pauseItem.folderId);
+                            if (folderIndex !== -1) {
+                                const triggerIndex = updatedFolders[folderIndex].triggers.findIndex(t => t.id === pauseItem.triggerId);
+                                if (triggerIndex !== -1) {
+                                    updatedFolders[folderIndex].triggers[triggerIndex] = {
+                                        ...updatedFolders[folderIndex].triggers[triggerIndex],
+                                        status: 'paused'
+                                    };
+                                }
+                            }
+                        } else {
+                            const triggerIndex = updatedTopLevelTriggers.findIndex(t => t.id === pauseItem.triggerId);
+                            if (triggerIndex !== -1) {
+                                updatedTopLevelTriggers[triggerIndex] = {
+                                    ...updatedTopLevelTriggers[triggerIndex],
+                                    status: 'paused'
+                                };
+                            }
+                        }
+                    }
+
                     // Calculate minNextRun for the updated organization state
                     const tempOrg: Organization = {
                         ...freshOrgData,
@@ -298,7 +379,7 @@ export async function GET() {
                         }
                     });
                 });
-                log(`[CRON] Successfully updated ${results.length} triggers for Org ${orgId}.`);
+                log(`[CRON] Successfully updated ${results.length} executed and ${triggersToPause.length} paused triggers for Org ${orgId}.`);
             } catch (e: any) {
                 console.error(`[CRON-CRITICAL] Failed to update org ${orgId}:`, e);
                 log(`[CRON-ERROR] Failed to save results for Org ${orgId}: ${e.message}`);

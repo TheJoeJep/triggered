@@ -1,16 +1,16 @@
 export const PLAN_LIMITS = {
     free: {
-        triggers: 5,
+        triggers: 3,
         executionsPerMonth: 100,
         minIntervalMinutes: 15,
     },
     hobbyist: {
-        triggers: 20,
+        triggers: 5,
         executionsPerMonth: 5000,
         minIntervalMinutes: 1,
     },
     pro: {
-        triggers: 50,
+        triggers: 25,
         executionsPerMonth: 20000,
         minIntervalMinutes: 1,
     },
