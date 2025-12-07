@@ -6,14 +6,25 @@ import { z } from 'zod';
 
 const checkoutSchema = z.object({
     planId: z.enum(['hobbyist', 'pro', 'business']),
+    interval: z.enum(['monthly', 'yearly']),
     redirectUrl: z.string().url(),
     organizationId: z.string(),
 });
 
-const PLAN_PRICE_IDS = {
-    hobbyist: process.env.STRIPE_PRICE_ID_HOBBYIST,
-    pro: process.env.STRIPE_PRICE_ID_PRO,
-    business: process.env.STRIPE_PRICE_ID_BUSINESS,
+const getPriceId = (planId: 'hobbyist' | 'pro' | 'business', interval: 'monthly' | 'yearly') => {
+    if (interval === 'yearly') {
+        switch (planId) {
+            case 'hobbyist': return process.env.STRIPE_PRICE_ID_HOBBYIST_YEARLY;
+            case 'pro': return process.env.STRIPE_PRICE_ID_PRO_YEARLY;
+            case 'business': return process.env.STRIPE_PRICE_ID_BUSINESS_YEARLY;
+        }
+    } else {
+        switch (planId) {
+            case 'hobbyist': return process.env.STRIPE_PRICE_ID_HOBBYIST;
+            case 'pro': return process.env.STRIPE_PRICE_ID_PRO;
+            case 'business': return process.env.STRIPE_PRICE_ID_BUSINESS;
+        }
+    }
 };
 
 export const POST = withUserAuthentication(async (req) => {
@@ -25,11 +36,11 @@ export const POST = withUserAuthentication(async (req) => {
         return NextResponse.json({ error: 'Invalid request body', details: validation.error.flatten() }, { status: 400 });
     }
 
-    const { planId, redirectUrl, organizationId } = validation.data;
-    const priceId = PLAN_PRICE_IDS[planId];
+    const { planId, interval, redirectUrl, organizationId } = validation.data;
+    const priceId = getPriceId(planId, interval);
 
     if (!priceId) {
-        return NextResponse.json({ error: `Price ID for plan ${planId} is not configured.` }, { status: 500 });
+        return NextResponse.json({ error: `Price ID for plan ${planId} (${interval}) is not configured.` }, { status: 500 });
     }
 
     // Verify organization access
@@ -80,6 +91,10 @@ export const POST = withUserAuthentication(async (req) => {
                     planId: planId,
                 },
             },
+            metadata: {
+                organizationId: organizationId,
+                planId: planId,
+            }
         });
 
         return NextResponse.json({ sessionId: session.id, url: session.url });

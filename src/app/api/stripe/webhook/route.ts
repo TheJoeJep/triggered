@@ -95,17 +95,29 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
 
     const orgDoc = orgsSnapshot.docs[0];
 
-    // Map Stripe Price ID back to our Plan ID
-    // This is a bit tricky if we have multiple prices per plan (monthly/yearly)
-    // Ideally we store the planId in subscription metadata
-    const planId = subscription.metadata.planId || orgDoc.data().planId;
+    // Determine planId from the active price ID
+    const priceId = subscription.items.data[0]?.price.id;
+    let planId = 'free';
+
+    if (priceId === process.env.STRIPE_PRICE_ID_HOBBYIST || priceId === process.env.STRIPE_PRICE_ID_HOBBYIST_YEARLY) {
+        planId = 'hobbyist';
+    } else if (priceId === process.env.STRIPE_PRICE_ID_PRO || priceId === process.env.STRIPE_PRICE_ID_PRO_YEARLY) {
+        planId = 'pro';
+    } else if (priceId === process.env.STRIPE_PRICE_ID_BUSINESS || priceId === process.env.STRIPE_PRICE_ID_BUSINESS_YEARLY) {
+        planId = 'business';
+    } else {
+        // Fallback to metadata if price ID is unknown (legacy or unmatched)
+        // Or keep existing plan if we can't determine
+        planId = subscription.metadata.planId || orgDoc.data().planId || 'free';
+        console.warn(`Unknown price ID ${priceId}, falling back to metadata/previous planId: ${planId}`);
+    }
 
     await orgDoc.ref.update({
         subscriptionStatus: subscription.status,
         planId: planId,
         subscriptionId: subscription.id,
     });
-    console.log(`Updated subscription status for organization ${orgDoc.id} to ${subscription.status}`);
+    console.log(`Updated subscription status for organization ${orgDoc.id} to ${subscription.status} (Plan: ${planId})`);
 }
 
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
