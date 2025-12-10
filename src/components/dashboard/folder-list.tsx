@@ -121,9 +121,9 @@ export function FolderList() {
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                         <SidebarMenuItem>
-                            <SidebarMenuButton isActive={pathname === '/analytics'} onClick={() => router.push('/analytics')} tooltip="Analytics">
+                            <SidebarMenuButton isActive={pathname === '/dashboard/analytics'} onClick={() => router.push('/dashboard/analytics')} tooltip="Analytics">
                                 <BarChart />
-                                <span>Analytics</span>
+                                <span className={state === "collapsed" ? "hidden" : ""}>Analytics</span>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                     </SidebarMenu>

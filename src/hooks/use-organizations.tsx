@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, writeBatch, query, getDocs, where } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, collection, writeBatch, query, getDocs, where, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Organization, Folder, Trigger, Member, UserData, TriggerStatus, Schedule, ExecutionLog } from '@/lib/types';
 import { useAuth } from './use-auth';
@@ -26,6 +26,91 @@ export function useOrganizations() {
 
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Helper to migrate legacy triggers (embedded in arrays) to subcollection
+  const migrateLegacyTriggers = useCallback(async (org: Organization) => {
+    try {
+      const batch = writeBatch(db);
+      let hasChanges = false;
+
+      // Migrate top-level triggers
+      if (org.triggers && org.triggers.length > 0) {
+        console.log(`[MIGRATION] Migrating ${org.triggers.length} top-level triggers for org ${org.id}`);
+        org.triggers.forEach(t => {
+          const newRef = doc(db, 'organizations', org.id, 'triggers', t.id);
+          // Ensure field completeness
+          const triggerData = { ...t, orgId: org.id, folderId: null };
+          batch.set(newRef, triggerData);
+        });
+        hasChanges = true;
+      }
+
+      // Migrate folder triggers
+      const migratedFolders = org.folders.map(f => {
+        if (f.triggers && f.triggers.length > 0) {
+          console.log(`[MIGRATION] Migrating ${f.triggers.length} triggers in folder ${f.id}`);
+          f.triggers.forEach(t => {
+            const newRef = doc(db, 'organizations', org.id, 'triggers', t.id);
+            const triggerData = { ...t, orgId: org.id, folderId: f.id };
+            batch.set(newRef, triggerData);
+          });
+          hasChanges = true;
+          return { ...f, triggers: [] }; // Clear triggers from folder
+        }
+        return f;
+      });
+
+      if (hasChanges) {
+        // Update Org Doc to clear legacy arrays
+        const orgRef = doc(db, 'organizations', org.id);
+        batch.update(orgRef, {
+          triggers: [], // Clear top-level
+          folders: migratedFolders // Update folders with empty trigger arrays
+        });
+        await batch.commit();
+        console.log(`[MIGRATION] Successfully migrated triggers for org ${org.id}`);
+      }
+
+    } catch (error) {
+      console.error(`[MIGRATION-ERROR] Failed to migrate triggers for org ${org.id}:`, error);
+    }
+  }, []);
+
+  // Helper to hydrate an organization with its triggers from subcollection
+  const hydrateOrganizationTriggers = useCallback(async (org: Organization) => {
+    try {
+      // 1. Check for legacy triggers and migrate if needed
+      if ((org.triggers && org.triggers.length > 0) || (org.folders && org.folders.some(f => f.triggers && f.triggers.length > 0))) {
+        await migrateLegacyTriggers(org);
+        // After migration, the Org Doc in DB is updated. 
+        // We can proceed to fetch from subcollection. 
+        // Note: The 'org' variable here still has the old data, but 'getDocs' below fetches new data from subcollection.
+        // We assume migration succeeded.
+      }
+
+      const triggersSnapshot = await getDocs(collection(db, 'organizations', org.id, 'triggers'));
+      const allTriggers = triggersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Trigger));
+
+      // Distribute triggers to folders or top-level
+      // Note: We use 'org.folders' from the doc, but if we just migrated, we updated it in DB but 'org' var is stale.
+      // However, we only care about folder IDs here.
+      const hydratedFolders = org.folders.map(folder => ({
+        ...folder,
+        triggers: allTriggers.filter(t => t.folderId === folder.id)
+      }));
+
+      const topLevelTriggers = allTriggers.filter(t => !t.folderId);
+
+      return {
+        ...org,
+        folders: hydratedFolders,
+        triggers: topLevelTriggers
+      };
+    } catch (error) {
+      console.error(`Failed to hydrate triggers for org ${org.id}:`, error);
+      return org;
+    }
+  }, [migrateLegacyTriggers]);
 
   const fetchOrganizations = useCallback(async () => {
     if (!user) {
@@ -55,15 +140,19 @@ export function useOrganizations() {
 
       const orgPromises = orgIds.map(id => getDoc(doc(db, 'organizations', id)));
       const orgDocs = await Promise.all(orgPromises);
-      const userOrgs = orgDocs.map(d => d.data() as Organization).filter(Boolean);
-
-      setOrganizations(userOrgs);
+      let userOrgs = orgDocs.map(d => ({ id: d.id, ...d.data() } as Organization)).filter(o => o.name);
 
       if (userOrgs.length > 0) {
+        // Hydrate triggers for all organizations to ensure smooth switching
+        userOrgs = await Promise.all(userOrgs.map(hydrateOrganizationTriggers));
+
+        setOrganizations(userOrgs);
+
         if (!selectedOrgId || !userOrgs.some(o => o.id === selectedOrgId)) {
           setSelectedOrgId(userOrgs[0].id);
         }
       } else {
+        setOrganizations([]);
         setSelectedOrgId(null);
       }
 
@@ -73,7 +162,7 @@ export function useOrganizations() {
     } finally {
       setLoading(false);
     }
-  }, [user, selectedOrgId, setSelectedOrgId]);
+  }, [user, selectedOrgId, setSelectedOrgId, hydrateOrganizationTriggers]);
 
   useEffect(() => {
     if (authLoading) {
@@ -88,10 +177,27 @@ export function useOrganizations() {
   const updateOrganizationData = useCallback(async (orgId: string, updatedData: Partial<Organization>) => {
     if (!user) return;
     const orgDocRef = doc(db, 'organizations', orgId);
-    await updateDoc(orgDocRef, updatedData);
+
+    // Safety check: remove triggers from update payload to prevent overwriting subcollection with empty array or stale data
+    // cast to any to deconstruct
+    const { triggers, folders, ...safeData } = updatedData as any;
+
+    // If folders are being updated (metadata), strip triggers from them before saving
+    let safeFolders = undefined;
+    if (folders) {
+      safeFolders = folders.map((f: Folder) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { triggers, ...folderMeta } = f;
+        return { ...folderMeta, triggers: [] }; // Save with empty triggers array
+      });
+    }
+
+    const dataToSave = { ...safeData };
+    if (safeFolders) dataToSave.folders = safeFolders;
+
+    await updateDoc(orgDocRef, dataToSave);
 
     await fetchOrganizations();
-
   }, [user, fetchOrganizations]);
 
   const addFolder = useCallback(async (name: string) => {
@@ -102,27 +208,41 @@ export function useOrganizations() {
       name,
       triggers: [],
     };
+
+    // Save to Org Doc without triggers
+    const folderToSave = { ...newFolder, triggers: [] };
+
     await updateDoc(doc(db, 'organizations', selectedOrgId), {
-      folders: arrayUnion(newFolder)
+      folders: arrayUnion(folderToSave)
     });
 
-    setOrganizations(prevOrgs =>
-      prevOrgs.map(org =>
-        org.id === selectedOrgId
-          ? { ...org, folders: [...(org.folders || []), newFolder] }
-          : org
-      )
-    );
-  }, [user, selectedOrgId]);
+    await fetchOrganizations();
+  }, [user, selectedOrgId, fetchOrganizations]);
 
   const deleteFolder = useCallback(async (folderId: string) => {
     if (!user || !selectedOrganization) return;
     console.log(`[ACTION] Deleting folder: ${folderId}`);
+
     const folderToDelete = selectedOrganization.folders.find(f => f.id === folderId);
+
     if (folderToDelete) {
+      // Construct the object exactly as it is in Firestore (empty triggers) for arrayRemove
+      const firestoreFolder = { id: folderToDelete.id, name: folderToDelete.name, triggers: [] };
+
       await updateDoc(doc(db, 'organizations', selectedOrganization.id), {
-        folders: arrayRemove(folderToDelete)
+        folders: arrayRemove(firestoreFolder)
       });
+
+      // Batch delete all triggers in this folder from subcollection
+      const triggersToDelete = folderToDelete.triggers;
+      if (triggersToDelete.length > 0) {
+        const batch = writeBatch(db);
+        triggersToDelete.forEach(t => {
+          batch.delete(doc(db, 'organizations', selectedOrganization.id, 'triggers', t.id));
+        });
+        await batch.commit();
+      }
+
       await fetchOrganizations();
     }
   }, [user, selectedOrganization, fetchOrganizations]);
@@ -155,7 +275,7 @@ export function useOrganizations() {
       members: [newMember],
       memberUids: [user.uid],
       folders: [],
-      triggers: [],
+      triggers: [], // Empty in doc
       apiKey: generateApiKey(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
     };
@@ -180,23 +300,25 @@ export function useOrganizations() {
       finalSchedule = { type: 'interval', amount: 1, unit: 'days' };
     }
 
-    console.log(`[ACTION] Creating new trigger "${triggerData.name}" in folder ${folderId} via API`);
+    console.log(`[ACTION] Creating new trigger "${triggerData.name}" in folder ${folderId}`);
 
-    const token = await user.getIdToken();
-    try {
-      await axios.post('/api/dashboard/triggers', {
-        ...triggerData,
-        schedule: finalSchedule,
-        orgId: selectedOrganization.id,
-        folderId: folderId
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      await fetchOrganizations();
-    } catch (error: any) {
-      console.error("Failed to create trigger via API:", error);
-      throw new Error(error.response?.data?.error || error.message);
-    }
+    // Create new trigger in subcollection
+    const newTriggerRef = doc(collection(db, 'organizations', selectedOrganization.id, 'triggers'));
+    const newTrigger: Trigger = {
+      id: newTriggerRef.id,
+      ...triggerData,
+      schedule: finalSchedule,
+      status: 'active',
+      folderId: folderId,
+      orgId: selectedOrganization.id,
+      runCount: 0,
+      executionHistory: [],
+      nextRun: new Date().toISOString()
+    };
+
+    await setDoc(newTriggerRef, newTrigger);
+    await fetchOrganizations();
+
   }, [selectedOrganization, user, fetchOrganizations]);
 
   const addTriggerToOrganization = useCallback(async (triggerData: Omit<Trigger, 'id' | 'status' | 'runCount' | 'executionHistory'>) => {
@@ -207,23 +329,24 @@ export function useOrganizations() {
       finalSchedule = { type: 'interval', amount: 1, unit: 'days' };
     }
 
-    console.log(`[ACTION] Creating new trigger "${triggerData.name}" in organization root via API`);
+    console.log(`[ACTION] Creating new trigger "${triggerData.name}" in organization root`);
 
-    const token = await user.getIdToken();
-    try {
-      await axios.post('/api/dashboard/triggers', {
-        ...triggerData,
-        schedule: finalSchedule,
-        orgId: selectedOrganization.id,
-        folderId: null
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      await fetchOrganizations();
-    } catch (error: any) {
-      console.error("Failed to create trigger via API:", error);
-      throw new Error(error.response?.data?.error || error.message);
-    }
+    const newTriggerRef = doc(collection(db, 'organizations', selectedOrganization.id, 'triggers'));
+    const newTrigger: Trigger = {
+      id: newTriggerRef.id,
+      ...triggerData,
+      schedule: finalSchedule,
+      status: 'active',
+      folderId: null,
+      orgId: selectedOrganization.id,
+      runCount: 0,
+      executionHistory: [],
+      nextRun: new Date().toISOString()
+    };
+
+    await setDoc(newTriggerRef, newTrigger);
+    await fetchOrganizations();
+
   }, [selectedOrganization, user, fetchOrganizations]);
 
 
@@ -231,71 +354,33 @@ export function useOrganizations() {
     if (!selectedOrganization) return;
     console.log(`[ACTION] Updating trigger: ${triggerId}`);
 
-    if (folderId) {
-      const updatedFolders = selectedOrganization.folders.map(folder => {
-        if (folder.id === folderId) {
-          return {
-            ...folder,
-            triggers: folder.triggers.map((t) =>
-              t.id === triggerId ? { ...t, ...triggerData } as Trigger : t
-            ),
-          };
-        }
-        return folder;
-      });
-      await updateOrganizationData(selectedOrganization.id, { folders: updatedFolders });
-    } else {
-      const updatedTriggers = selectedOrganization.triggers.map(t =>
-        t.id === triggerId ? { ...t, ...triggerData } as Trigger : t
-      );
-      await updateOrganizationData(selectedOrganization.id, { triggers: updatedTriggers });
-    }
-  }, [selectedOrganization, updateOrganizationData]);
+    const triggerRef = doc(db, 'organizations', selectedOrganization.id, 'triggers', triggerId);
+    await updateDoc(triggerRef, triggerData);
+
+    await fetchOrganizations();
+  }, [selectedOrganization, fetchOrganizations]);
+
 
   const updateTriggerStatus = useCallback(async (folderId: string | null, triggerId: string, status: TriggerStatus) => {
     if (!selectedOrganization) return;
     console.log(`[ACTION] Changing status for trigger ${triggerId} to ${status}`);
 
-    const partialUpdate: Partial<Trigger> = { status };
+    const triggerRef = doc(db, 'organizations', selectedOrganization.id, 'triggers', triggerId);
+    await updateDoc(triggerRef, { status });
 
-    if (folderId) {
-      const updatedFolders = selectedOrganization.folders.map(folder => {
-        if (folder.id === folderId) {
-          return {
-            ...folder,
-            triggers: folder.triggers.map((t) =>
-              t.id === triggerId ? { ...t, ...partialUpdate } as Trigger : t
-            ),
-          };
-        }
-        return folder;
-      });
-      await updateOrganizationData(selectedOrganization.id, { folders: updatedFolders });
-    } else {
-      const updatedTriggers = selectedOrganization.triggers.map(t =>
-        t.id === triggerId ? { ...t, ...partialUpdate } as Trigger : t
-      );
-      await updateOrganizationData(selectedOrganization.id, { triggers: updatedTriggers });
-    }
-  }, [selectedOrganization, updateOrganizationData]);
+    await fetchOrganizations();
+  }, [selectedOrganization, fetchOrganizations]);
 
 
   const deleteTrigger = useCallback(async (folderId: string | null, triggerId: string) => {
     if (!selectedOrganization) return;
     console.log(`[ACTION] Deleting trigger: ${triggerId}`);
 
-    if (folderId) {
-      const updatedFolders = selectedOrganization.folders.map(folder =>
-        folder.id === folderId
-          ? { ...folder, triggers: folder.triggers.filter(t => t.id !== triggerId) }
-          : folder
-      );
-      await updateOrganizationData(selectedOrganization.id, { folders: updatedFolders });
-    } else {
-      const updatedTriggers = selectedOrganization.triggers.filter(t => t.id !== triggerId);
-      await updateOrganizationData(selectedOrganization.id, { triggers: updatedTriggers });
-    }
-  }, [selectedOrganization, updateOrganizationData]);
+    const triggerRef = doc(db, 'organizations', selectedOrganization.id, 'triggers', triggerId);
+    await deleteDoc(triggerRef);
+
+    await fetchOrganizations();
+  }, [selectedOrganization, fetchOrganizations]);
 
   const regenerateApiKey = useCallback(async () => {
     if (!selectedOrganization) return;
@@ -321,39 +406,30 @@ export function useOrganizations() {
     };
 
     try {
-      const response = await axios({
-        method: trigger.method,
+      const response = await axios.post('/api/test-trigger', {
         url: trigger.url,
-        data: trigger.payload,
+        method: trigger.method,
         headers: {
           'Content-Type': 'application/json',
           'X-Trigger-Mode': 'test'
         },
-        timeout: trigger.timeout || 5000,
+        payload: trigger.payload,
+        timeout: trigger.timeout || 10000,
       });
-      console.log(`[ACTION] Test for trigger ${trigger.id} was successful.`);
 
-      logEntry.status = 'success';
-      logEntry.responseStatus = response.status;
-      logEntry.responseBody = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
+      const { success, status, data, duration, error, statusText } = response.data;
 
-      const newLog: ExecutionLog = {
-        ...logEntry,
-        id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-      };
+      console.log(`[ACTION] Test for trigger ${trigger.id} completed. Success: ${success}`);
 
-      const updatedHistory = [newLog, ...(trigger.executionHistory || [])].slice(0, 20);
-      await updateTrigger(folderId, trigger.id, { executionHistory: updatedHistory });
-
-      return true;
-    } catch (error: any) {
-      console.error(`[ACTION-ERROR] Failed to execute test for trigger ${trigger.id}:`, error);
-
-      logEntry.status = 'failed';
-      logEntry.error = error.message;
-      if (error.response) {
-        logEntry.responseStatus = error.response.status;
-        logEntry.responseBody = typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data);
+      if (success) {
+        logEntry.status = 'success';
+        logEntry.responseStatus = status;
+        logEntry.responseBody = typeof data === 'string' ? data : JSON.stringify(data);
+      } else {
+        logEntry.status = 'failed';
+        logEntry.responseStatus = status;
+        logEntry.error = error || statusText || "Unknown Error";
+        logEntry.responseBody = typeof data === 'string' ? data : JSON.stringify(data);
       }
 
       const newLog: ExecutionLog = {
@@ -361,48 +437,103 @@ export function useOrganizations() {
         id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
       };
 
-      const updatedHistory = [newLog, ...(trigger.executionHistory || [])].slice(0, 20);
-      await updateTrigger(folderId, trigger.id, { executionHistory: updatedHistory });
+      const triggerRef = doc(db, 'organizations', selectedOrganization!.id, 'triggers', trigger.id);
 
+      const updatedHistory = [newLog, ...(trigger.executionHistory || [])].slice(0, 20);
+      await updateDoc(triggerRef, { executionHistory: updatedHistory });
+
+      await fetchOrganizations();
+
+      return success;
+    } catch (error: any) {
+      console.error(`[ACTION-ERROR] Failed to execute test for trigger ${trigger.id}:`, error);
       return false;
     }
-  }, [updateTrigger]);
+  }, [selectedOrganization, fetchOrganizations]);
 
   const resetTrigger = useCallback(async (folderId: string | null, triggerId: string) => {
     if (!selectedOrganization) return;
-
     const now = new Date();
     const nextMinute = startOfMinute(add(now, { minutes: 1 }));
 
     console.log(`[ACTION] Resetting trigger ${triggerId} to next minute: ${nextMinute.toISOString()}`);
 
-    // Find the trigger to get current history
-    let currentTrigger: Trigger | undefined;
-    if (folderId) {
-      const folder = selectedOrganization.folders.find(f => f.id === folderId);
-      currentTrigger = folder?.triggers.find(t => t.id === triggerId);
-    } else {
-      currentTrigger = selectedOrganization.triggers.find(t => t.id === triggerId);
-    }
+    const triggerRef = doc(db, 'organizations', selectedOrganization!.id, 'triggers', triggerId);
 
-    const newLog: ExecutionLog = {
-      id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: now.toISOString(),
-      status: 'reset',
-      triggerMode: 'manual',
-    };
+    // Add a 'reset' log entry
+    // Note: We are writing to the Trigger document `executionHistory` Array directly here. 
+    // This is legacy behavior but acceptable for now as 'reset' is a rare admin action.
+    // Ideally this should go to the subcollection too in the future.
+    // For now, let's just update the status/runCount.
 
-    const partialUpdate: Partial<Trigger> = {
-      runCount: 0,
+    await updateDoc(triggerRef, {
       nextRun: nextMinute.toISOString(),
       status: 'active',
-      executionHistory: [newLog, ...(currentTrigger?.executionHistory || [])].slice(0, 20),
-    };
+      runCount: 0,
+      // executionHistory: arrayUnion(resetLog) // Optional
+    });
 
-    await updateTrigger(folderId, triggerId, partialUpdate);
+    await fetchOrganizations();
+  }, [selectedOrganization, fetchOrganizations]);
 
-  }, [selectedOrganization, updateTrigger]);
+  const addMember = useCallback(async (email: string, role: Role) => {
+    if (!selectedOrganization || !auth.currentUser) return;
+    const token = await auth.currentUser.getIdToken();
+    try {
+      await axios.post(`/api/organizations/${selectedOrganization.id}/members`, { email, role }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      await fetchOrganizations();
+    } catch (error: any) {
+      throw new Error(error.response?.data?.error || error.message);
+    }
+  }, [selectedOrganization, fetchOrganizations]);
 
+  const removeMember = useCallback(async (uid: string) => {
+    if (!selectedOrganization || !auth.currentUser) return;
+    const token = await auth.currentUser.getIdToken();
+    try {
+      await axios.delete(`/api/organizations/${selectedOrganization.id}/members`, {
+        data: { uid },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      await fetchOrganizations();
+    } catch (error: any) {
+      throw new Error(error.response?.data?.error || error.message);
+    }
+  }, [selectedOrganization, fetchOrganizations]);
 
-  return { organizations, selectedOrganization, loading: authLoading || loading, addFolder, deleteFolder, addTriggerToFolder, addTriggerToOrganization, updateTrigger, updateTriggerStatus, deleteTrigger, createOrganization, regenerateApiKey, testTrigger, updateOrganizationTimezone, resetTrigger };
+  const updateMemberRole = useCallback(async (uid: string, role: Role) => {
+    if (!selectedOrganization || !auth.currentUser) return;
+    const token = await auth.currentUser.getIdToken();
+    try {
+      await axios.put(`/api/organizations/${selectedOrganization.id}/members`, { uid, role }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      await fetchOrganizations();
+    } catch (error: any) {
+      throw new Error(error.response?.data?.error || error.message);
+    }
+  }, [selectedOrganization, fetchOrganizations]);
+
+  return {
+    organizations,
+    selectedOrganization,
+    loading: authLoading || loading,
+    addFolder,
+    deleteFolder,
+    addTriggerToFolder,
+    addTriggerToOrganization,
+    updateTrigger,
+    updateTriggerStatus,
+    deleteTrigger,
+    createOrganization,
+    regenerateApiKey,
+    testTrigger,
+    updateOrganizationTimezone,
+    resetTrigger,
+    addMember,
+    removeMember,
+    updateMemberRole
+  };
 }

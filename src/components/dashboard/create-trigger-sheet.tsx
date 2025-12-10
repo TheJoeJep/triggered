@@ -57,7 +57,7 @@ const payloadItemSchema = z.object({
 const formSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters.").max(50),
   url: z.string().url("Please enter a valid URL."),
-  method: z.enum(["GET", "POST", "PUT", "DELETE"]),
+  method: z.enum(["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]),
   folderId: z.string().optional(),
   scheduledAt: z.date({
     required_error: "A date for the trigger is required.",
@@ -242,7 +242,7 @@ export function CreateTriggerSheet({
 
   const watchedIsRecurring = form.watch("isRecurring");
   const watchedMethod = form.watch("method");
-  const canHavePayload = watchedMethod === 'POST' || watchedMethod === 'PUT';
+  const canHavePayload = watchedMethod === 'POST' || watchedMethod === 'PUT' || watchedMethod === 'PATCH';
   const isEditing = !!trigger;
 
   return (
@@ -331,7 +331,10 @@ export function CreateTriggerSheet({
                           <SelectItem value="GET" className="focus:bg-white/10 focus:text-white">GET</SelectItem>
                           <SelectItem value="POST" className="focus:bg-white/10 focus:text-white">POST</SelectItem>
                           <SelectItem value="PUT" className="focus:bg-white/10 focus:text-white">PUT</SelectItem>
+                          <SelectItem value="PATCH" className="focus:bg-white/10 focus:text-white">PATCH</SelectItem>
                           <SelectItem value="DELETE" className="focus:bg-white/10 focus:text-white">DELETE</SelectItem>
+                          <SelectItem value="HEAD" className="focus:bg-white/10 focus:text-white">HEAD</SelectItem>
+                          <SelectItem value="OPTIONS" className="focus:bg-white/10 focus:text-white">OPTIONS</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />

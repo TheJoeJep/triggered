@@ -165,7 +165,8 @@ export async function GET() {
     log(`[CRON] Job started at ${new Date().toISOString()}`);
 
     try {
-        const now = new Date().toISOString();
+        const now = new Date();
+        const nowIso = now.toISOString();
         const organizationsSnapshot = await db.collection('organizations').get();
         log(`[CRON] Found ${organizationsSnapshot.docs.length} organizations to process.`);
 
@@ -178,15 +179,57 @@ export async function GET() {
             const planId = organization.planId || 'free';
             const limits = PLAN_LIMITS[planId];
 
+            // --- Migration Start ---
+            const batch = db.batch(); // Use batch for migration
+            let migrationNeeded = false;
+
+            // Migrate top-level legacy triggers
+            if (organization.triggers && organization.triggers.length > 0) {
+                log(`[CRON-MIGRATION] Migrating ${organization.triggers.length} legacy top-level triggers for Org ${orgId}`);
+                organization.triggers.forEach(t => {
+                    const newRef = db.collection('organizations').doc(orgId).collection('triggers').doc(t.id);
+                    batch.set(newRef, { ...t, orgId, folderId: null });
+                });
+                batch.update(orgDoc.ref, { triggers: [] });
+                migrationNeeded = true;
+            }
+
+            // Migrate folder legacy triggers
+            let foldersUpdated = false;
+            const safeFolders = (organization.folders || []).map(f => {
+                if (f.triggers && f.triggers.length > 0) {
+                    log(`[CRON-MIGRATION] Migrating ${f.triggers.length} legacy triggers in folder ${f.id} for Org ${orgId}`);
+                    f.triggers.forEach(t => {
+                        const newRef = db.collection('organizations').doc(orgId).collection('triggers').doc(t.id);
+                        batch.set(newRef, { ...t, orgId, folderId: f.id });
+                    });
+                    foldersUpdated = true;
+                    return { ...f, triggers: [] };
+                }
+                return f;
+            });
+
+            if (foldersUpdated) {
+                batch.update(orgDoc.ref, { folders: safeFolders });
+                migrationNeeded = true;
+            }
+
+            if (migrationNeeded) {
+                await batch.commit();
+                log(`[CRON-MIGRATION] Migration completed for Org ${orgId}`);
+            }
+            // --- Migration End ---
+
+
             // Usage Tracking & Lazy Reset
-            let usage = organization.usage || { executionsThisMonth: 0, billingCycleStart: new Date().toISOString() };
+            let usage = organization.usage || { executionsThisMonth: 0, billingCycleStart: nowIso, dailyExecutions: {} };
             const billingStart = new Date(usage.billingCycleStart);
             const oneMonthAgo = new Date();
             oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
             if (billingStart < oneMonthAgo) {
                 // Reset usage if billing cycle is over
-                usage = { executionsThisMonth: 0, billingCycleStart: new Date().toISOString() };
+                usage = { executionsThisMonth: 0, billingCycleStart: nowIso, dailyExecutions: {} };
             }
 
             if (usage.executionsThisMonth >= limits.executionsPerMonth) {
@@ -194,196 +237,126 @@ export async function GET() {
                 continue;
             }
 
-            // Enforce Trigger Limits
-            let activeTriggers: { trigger: Trigger, folderId: string | null }[] = [];
+            // --- Fetch Active Triggers from Subcollection ---
+            const triggersRef = db.collection('organizations').doc(orgId).collection('triggers');
+            const activeTriggersSnapshot = await triggersRef.where('status', '==', 'active').get();
+            let activeTriggers = activeTriggersSnapshot.docs.map(d => d.data() as Trigger);
 
-            if (Array.isArray(organization.folders)) {
-                organization.folders.forEach(folder => {
-                    if (Array.isArray(folder.triggers)) {
-                        folder.triggers.forEach(trigger => {
-                            if (trigger.status === 'active') {
-                                activeTriggers.push({ trigger, folderId: folder.id });
-                            }
-                        });
-                    }
-                });
-            }
-            if (Array.isArray(organization.triggers)) {
-                organization.triggers.forEach(trigger => {
-                    if (trigger.status === 'active') {
-                        activeTriggers.push({ trigger, folderId: null });
-                    }
-                });
-            }
-
-            const triggersToPause: { triggerId: string, folderId: string | null }[] = [];
+            // --- Enforce Plan Limits (Pause Excess) ---
+            const triggersToPause: Trigger[] = [];
 
             if (limits.triggers !== Infinity && activeTriggers.length > limits.triggers) {
                 log(`[CRON] Organization ${orgId} exceeds trigger limit (${activeTriggers.length} > ${limits.triggers}). Pausing excess triggers.`);
 
-                // Sort by nextRun (earliest first) to keep the most urgent ones
+                // Sort by nextRun (asc) to keep earliest ones
                 activeTriggers.sort((a, b) => {
-                    if (!a.trigger.nextRun) return 1;
-                    if (!b.trigger.nextRun) return -1;
-                    return new Date(a.trigger.nextRun).getTime() - new Date(b.trigger.nextRun).getTime();
+                    if (!a.nextRun) return 1;
+                    if (!b.nextRun) return -1;
+                    return new Date(a.nextRun).getTime() - new Date(b.nextRun).getTime();
                 });
 
-                // Keep the first 'limits.triggers'
-                const toPause = activeTriggers.slice(limits.triggers);
+                // Identify triggers to pause (after the first N)
+                const toKeep = activeTriggers.slice(0, limits.triggers);
+                const toPauseList = activeTriggers.slice(limits.triggers);
 
-                toPause.forEach(item => {
-                    triggersToPause.push({ triggerId: item.trigger.id, folderId: item.folderId });
+                // Update lists
+                activeTriggers = toKeep;
 
-                    // Update in-memory organization so they aren't picked up as due
-                    if (item.folderId) {
-                        const folder = organization.folders.find(f => f.id === item.folderId);
-                        const trigger = folder?.triggers.find(t => t.id === item.trigger.id);
-                        if (trigger) trigger.status = 'paused';
-                    } else {
-                        const trigger = organization.triggers.find(t => t.id === item.trigger.id);
-                        if (trigger) trigger.status = 'paused';
-                    }
-                });
-            }
-
-            const dueTriggers: { trigger: Trigger, folderId: string | null }[] = [];
-
-            // Collect due triggers from folders
-            if (Array.isArray(organization.folders)) {
-                for (const folder of organization.folders) {
-                    if (Array.isArray(folder.triggers)) {
-                        for (const trigger of folder.triggers) {
-                            if (trigger.status === 'active' && trigger.nextRun && trigger.nextRun <= now) {
-                                log(`[CRON] Trigger "${trigger.name}" (ID: ${trigger.id}) is due.`);
-                                dueTriggers.push({ trigger, folderId: folder.id });
-                            }
-                        }
-                    }
+                // Pause them in DB immediately
+                const pauseBatch = db.batch();
+                for (const t of toPauseList) {
+                    const tRef = triggersRef.doc(t.id);
+                    pauseBatch.update(tRef, { status: 'paused' });
+                    triggersToPause.push(t);
                 }
+                await pauseBatch.commit();
+                log(`[CRON] Paused ${toPauseList.length} excess triggers.`);
             }
 
-            // Collect due top-level triggers
-            if (Array.isArray(organization.triggers)) {
-                for (const trigger of organization.triggers) {
-                    if (trigger.status === 'active' && trigger.nextRun && trigger.nextRun <= now) {
-                        log(`[CRON] Trigger "${trigger.name}" (ID: ${trigger.id}) is due.`);
-                        dueTriggers.push({ trigger, folderId: null });
-                    }
-                }
+            if (triggersToPause.length > 0) {
+                // triggersToPause are already handled above, we just logged them.
             }
 
-            // If no due triggers, we still want to update minNextRun if it's missing (Backfill)
-            // But to avoid writing to DB every minute for every org, we only update if we did work OR if minNextRun is missing.
-            // For now, let's only update if we did work to keep it simple, 
-            // BUT we need to backfill. 
-            // Optimization: Only update if dueTriggers > 0. 
-            // The backfill will happen naturally as triggers become due.
-            // However, if a trigger is far in the future, it will never get backfilled until then.
-            // Let's stick to updating only when triggers are executed for now to avoid massive writes.
+            // --- Identify Due Triggers ---
+            const dueTriggers = activeTriggers.filter(t => t.nextRun && new Date(t.nextRun) <= now);
 
-            if (dueTriggers.length === 0 && triggersToPause.length === 0) continue;
+            if (dueTriggers.length === 0) continue;
 
             totalDueTriggers += dueTriggers.length;
-            if (dueTriggers.length > 0) {
-                log(`[CRON] Executing ${dueTriggers.length} triggers for Org ${orgId}...`);
-            }
-            if (triggersToPause.length > 0) {
-                log(`[CRON] Pausing ${triggersToPause.length} triggers for Org ${orgId} due to plan limits.`);
-            }
+            log(`[CRON] Executing ${dueTriggers.length} triggers for Org ${orgId}...`);
 
-            // Execute triggers in parallel
+            // --- Execute Triggers ---
             const results = await Promise.all(
-                dueTriggers.map(dt => executeTrigger(dt.trigger, dt.folderId, organizationTimezone))
+                dueTriggers.map(t => executeTrigger(t, t.folderId || null, organizationTimezone))
             );
 
-            // Batch update the organization document
-            try {
-                await db.runTransaction(async (transaction) => {
-                    const freshOrgDoc = await transaction.get(orgDoc.ref);
-                    if (!freshOrgDoc.exists) throw new Error("Org not found");
-                    const freshOrgData = freshOrgDoc.data() as Organization;
+            // --- Update Execution Results in Subcollection and Org Usage ---
+            const updateBatch = db.batch();
+            let successCount = 0;
 
-                    const updatedFolders = [...(freshOrgData.folders || [])];
-                    const updatedTopLevelTriggers = [...(freshOrgData.triggers || [])];
+            for (const result of results) {
+                const triggerRef = triggersRef.doc(result.triggerId);
 
-                    for (const result of results) {
-                        if (result.folderId) {
-                            const folderIndex = updatedFolders.findIndex(f => f.id === result.folderId);
-                            if (folderIndex !== -1) {
-                                const triggerIndex = updatedFolders[folderIndex].triggers.findIndex(t => t.id === result.triggerId);
-                                if (triggerIndex !== -1) {
-                                    const trigger = updatedFolders[folderIndex].triggers[triggerIndex];
-                                    updatedFolders[folderIndex].triggers[triggerIndex] = {
-                                        ...trigger,
-                                        status: result.status,
-                                        nextRun: result.nextRun,
-                                        runCount: result.runCount,
-                                        executionHistory: [result.newLog, ...(trigger.executionHistory || [])].slice(0, 20)
-                                    };
-                                }
-                            }
-                        } else {
-                            const triggerIndex = updatedTopLevelTriggers.findIndex(t => t.id === result.triggerId);
-                            if (triggerIndex !== -1) {
-                                const trigger = updatedTopLevelTriggers[triggerIndex];
-                                updatedTopLevelTriggers[triggerIndex] = {
-                                    ...trigger,
-                                    status: result.status,
-                                    nextRun: result.nextRun,
-                                    runCount: result.runCount,
-                                    executionHistory: [result.newLog, ...(trigger.executionHistory || [])].slice(0, 20)
-                                };
-                            }
-                        }
+                // We need to fetch current history to append properly if we want to be strict,
+                // BUT for cron, we usually just overwrite/prepend since we are the authoritative runner.
+                // However, subcollection makes this disconnected.
+                // Let's rely on the fact that we have the 'newLog'. 
+                // We need to fetch the specific trigger doc to append history safely?
+                // Or just use arrayUnion? ArrayUnion puts it at the end. We want it at the start usually.
+                // Firestore doesn't support arrayPrepend.
+                // Reading every trigger doc again is expensive.
+                // `executeTrigger` returned `newLog`.
+
+                // Optimization: We already fetched `activeTriggers` above. We have the data in memory!
+                const originalTrigger = activeTriggers.find(t => t.id === result.triggerId);
+                const currentHistory = originalTrigger?.executionHistory || [];
+                // Keep last 5 logs on the document for quick preview
+                const newHistory = [result.newLog, ...currentHistory].slice(0, 5);
+
+                // 1. Write full log to 'logs' subcollection
+                const logRef = triggerRef.collection('logs').doc(result.newLog.id);
+                updateBatch.set(logRef, result.newLog);
+
+                // Lazy History Migration: If this is the first run after refactor, migrate old logs to subcollection
+                if (!originalTrigger?.historyMigrated && currentHistory.length > 0) {
+                    for (const log of currentHistory) {
+                        const logId = log.id || `log-${new Date(log.timestamp).getTime()}-${Math.random().toString(36).substr(2, 5)}`;
+                        const histLogRef = triggerRef.collection('logs').doc(logId);
+                        updateBatch.set(histLogRef, { ...log, id: logId });
                     }
+                }
 
-                    // Apply Paused Status for Excess Triggers
-                    for (const pauseItem of triggersToPause) {
-                        if (pauseItem.folderId) {
-                            const folderIndex = updatedFolders.findIndex(f => f.id === pauseItem.folderId);
-                            if (folderIndex !== -1) {
-                                const triggerIndex = updatedFolders[folderIndex].triggers.findIndex(t => t.id === pauseItem.triggerId);
-                                if (triggerIndex !== -1) {
-                                    updatedFolders[folderIndex].triggers[triggerIndex] = {
-                                        ...updatedFolders[folderIndex].triggers[triggerIndex],
-                                        status: 'paused'
-                                    };
-                                }
-                            }
-                        } else {
-                            const triggerIndex = updatedTopLevelTriggers.findIndex(t => t.id === pauseItem.triggerId);
-                            if (triggerIndex !== -1) {
-                                updatedTopLevelTriggers[triggerIndex] = {
-                                    ...updatedTopLevelTriggers[triggerIndex],
-                                    status: 'paused'
-                                };
-                            }
-                        }
-                    }
-
-                    // Calculate minNextRun for the updated organization state
-                    const tempOrg: Organization = {
-                        ...freshOrgData,
-                        folders: updatedFolders,
-                        triggers: updatedTopLevelTriggers
-                    };
-                    const minNextRun = calculateMinNextRun(tempOrg);
-
-                    transaction.update(orgDoc.ref, {
-                        folders: updatedFolders,
-                        triggers: updatedTopLevelTriggers,
-                        minNextRun: minNextRun || null,
-                        usage: {
-                            ...usage,
-                            executionsThisMonth: usage.executionsThisMonth + results.length
-                        }
-                    });
+                // 2. Update Trigger Doc with latest status and summary history
+                updateBatch.update(triggerRef, {
+                    status: result.status,
+                    nextRun: result.nextRun,
+                    runCount: result.runCount,
+                    executionHistory: newHistory,
+                    historyMigrated: true
                 });
-                log(`[CRON] Successfully updated ${results.length} executed and ${triggersToPause.length} paused triggers for Org ${orgId}.`);
-            } catch (e: any) {
-                console.error(`[CRON-CRITICAL] Failed to update org ${orgId}:`, e);
-                log(`[CRON-ERROR] Failed to save results for Org ${orgId}: ${e.message}`);
+
+                successCount++;
             }
+
+            // Update Org Usage
+            const todayKey = now.toISOString().split('T')[0];
+            const currentDaily = usage.dailyExecutions || {};
+            const todayCount = (currentDaily[todayKey] || 0) + results.length;
+
+            updateBatch.update(orgDoc.ref, {
+                usage: {
+                    ...usage,
+                    executionsThisMonth: usage.executionsThisMonth + results.length,
+                    dailyExecutions: {
+                        ...currentDaily,
+                        [todayKey]: todayCount
+                    }
+                },
+                minNextRun: null // Deprecated/Recalculate or just leave null if we stop using it
+            });
+
+            await updateBatch.commit();
+            log(`[CRON] Successfully executed and updated ${results.length} triggers for Org ${orgId}.`);
         }
 
         log(`[CRON] Job finished at ${new Date().toISOString()}`);
@@ -393,7 +366,7 @@ export async function GET() {
             stats: {
                 organizations: organizationsSnapshot.docs.length,
                 dueTriggers: totalDueTriggers,
-                timestamp: now
+                timestamp: nowIso
             },
             logs: logs
         });

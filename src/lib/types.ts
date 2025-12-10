@@ -1,7 +1,7 @@
 
 
 export type TriggerStatus = "active" | "paused" | "completed" | "failed" | "archived";
-export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
 
 export type IntervalUnit = "seconds" | "minutes" | "hours" | "days" | "weeks" | "months" | "years";
 
@@ -35,6 +35,9 @@ export type Trigger = {
   payload?: Record<string, any>;
   executionHistory?: ExecutionLog[];
   archiveOnComplete?: boolean;
+  folderId?: string | null;
+  orgId?: string;
+  historyMigrated?: boolean;
 };
 
 export type Folder = {
@@ -76,6 +79,7 @@ export type Organization = {
   usage?: {
     executionsThisMonth: number;
     billingCycleStart: string; // ISO 8601 string
+    dailyExecutions?: Record<string, number>; // ISO Date String (YYYY-MM-DD) -> Count
   };
 }
 

@@ -12,7 +12,18 @@ service cloud.firestore {
     // A user can read, update, or delete an organization if they are a member.
     match /organizations/{orgId} {
       allow create: if request.auth.uid == request.resource.data.owner.uid;
-      allow read, update, delete: if request.auth.uid in resource.data.memberUids;
+      allow read, delete: if request.auth.uid in resource.data.memberUids;
+      allow update: if request.auth.uid in resource.data.memberUids 
+                    && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['members', 'memberUids', 'owner', 'planId', 'usage', 'subscriptionId', 'subscriptionStatus']));
+      
+      // Allow access to triggers subcollection if user is a member of the parent organization
+      match /triggers/{triggerId} {
+        allow read, write: if request.auth.uid in get(/databases/$(database)/documents/organizations/$(orgId)).data.memberUids;
+        
+        match /logs/{logId} {
+             allow read: if request.auth.uid in get(/databases/$(database)/documents/organizations/$(orgId)).data.memberUids;
+        }
+      }
     }
   }
 }

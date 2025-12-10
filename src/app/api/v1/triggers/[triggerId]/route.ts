@@ -4,7 +4,6 @@ import { db } from '@/lib/firebase-admin';
 import { withAuthentication, AuthenticatedRequest, AuthenticatedContext } from '../../middleware';
 import type { Trigger, TriggerStatus } from '@/lib/types';
 import { z } from 'zod';
-import axios from 'axios';
 import { PLAN_LIMITS } from '@/lib/constants';
 import { IntervalUnit, Schedule } from '@/lib/types';
 
@@ -21,40 +20,28 @@ function getIntervalInMinutes(amount: number, unit: IntervalUnit): number {
     }
 }
 
-const findTrigger = (organization: AuthenticatedRequest['organization'], triggerId: string): { trigger: Trigger | null, folderId: string | null } => {
-    // Check top-level triggers
-    let trigger = organization.triggers.find(t => t.id === triggerId);
-    if (trigger) {
-        return { trigger, folderId: null };
-    }
-    // Check triggers in folders
-    for (const folder of organization.folders) {
-        trigger = folder.triggers.find(t => t.id === triggerId);
-        if (trigger) {
-            return { trigger, folderId: folder.id };
-        }
-    }
-    return { trigger: null, folderId: null };
+const findTriggerRef = (orgId: string, triggerId: string) => {
+    return db.collection('organizations').doc(orgId).collection('triggers').doc(triggerId);
 };
 
 export const GET = withAuthentication(async (req, context) => {
     const { organization } = req;
     const { triggerId } = context.params;
 
-    const { trigger } = findTrigger(organization, triggerId);
+    const triggerRef = findTriggerRef(organization.id, triggerId);
+    const triggerDoc = await triggerRef.get();
 
-    if (!trigger) {
+    if (!triggerDoc.exists) {
         return NextResponse.json({ error: 'Trigger not found' }, { status: 404 });
     }
 
-    return NextResponse.json(trigger);
+    return NextResponse.json({ id: triggerDoc.id, ...triggerDoc.data() });
 });
-
 
 const updateTriggerSchema = z.object({
     name: z.string().min(1).optional(),
     url: z.string().url().optional(),
-    method: z.enum(["GET", "POST", "PUT", "DELETE"]).optional(),
+    method: z.enum(["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]).optional(),
     nextRun: z.string().datetime().optional(),
     schedule: z.object({
         type: z.enum(['one-time', 'interval']),
@@ -78,11 +65,12 @@ export const PUT = withAuthentication(async (req, context) => {
         return NextResponse.json({ error: 'Invalid request body', details: validation.error.flatten() }, { status: 400 });
     }
 
+    const { schedule, ...updateData } = validation.data;
+
     // Check Plan Limits for Schedule Updates
-    if (validation.data.schedule && validation.data.schedule.type === 'interval') {
+    if (schedule && schedule.type === 'interval') {
         const planId = organization.planId || 'free';
         const limits = PLAN_LIMITS[planId];
-        const schedule = validation.data.schedule;
 
         if (schedule.amount && schedule.unit) {
             const intervalInMinutes = getIntervalInMinutes(schedule.amount, schedule.unit);
@@ -95,62 +83,36 @@ export const PUT = withAuthentication(async (req, context) => {
         }
     }
 
-    const { trigger: oldTrigger, folderId } = findTrigger(organization, triggerId);
-    if (!oldTrigger) {
+    const triggerRef = findTriggerRef(organization.id, triggerId);
+    const triggerDoc = await triggerRef.get();
+
+    if (!triggerDoc.exists) {
         return NextResponse.json({ error: 'Trigger not found' }, { status: 404 });
     }
 
-    const updatedTriggerData = { ...oldTrigger, ...validation.data };
+    const finalUpdate: any = { ...updateData };
+    if (schedule) finalUpdate.schedule = schedule;
 
-    const orgDocRef = db.collection('organizations').doc(organization.id);
+    await triggerRef.update(finalUpdate);
 
-    if (folderId) {
-        const updatedFolders = organization.folders.map(f => {
-            if (f.id === folderId) {
-                return {
-                    ...f,
-                    triggers: f.triggers.map(t => t.id === triggerId ? updatedTriggerData : t)
-                };
-            }
-            return f;
-        });
-        await orgDocRef.update({ folders: updatedFolders });
-    } else {
-        const updatedTriggers = organization.triggers.map(t => t.id === triggerId ? updatedTriggerData : t);
-        await orgDocRef.update({ triggers: updatedTriggers });
-    }
+    // Fetch updated
+    const updatedDoc = await triggerRef.get();
 
-    return NextResponse.json(updatedTriggerData);
+    return NextResponse.json({ id: updatedDoc.id, ...updatedDoc.data() });
 });
-
 
 export const DELETE = withAuthentication(async (req, context) => {
     const { organization } = req;
     const { triggerId } = context.params;
 
-    const { trigger, folderId } = findTrigger(organization, triggerId);
+    const triggerRef = findTriggerRef(organization.id, triggerId);
+    const triggerDoc = await triggerRef.get();
 
-    if (!trigger) {
+    if (!triggerDoc.exists) {
         return NextResponse.json({ error: 'Trigger not found' }, { status: 404 });
     }
 
-    const orgDocRef = db.collection('organizations').doc(organization.id);
-
-    if (folderId) {
-        const updatedFolders = organization.folders.map(f => {
-            if (f.id === folderId) {
-                return {
-                    ...f,
-                    triggers: f.triggers.filter(t => t.id !== triggerId)
-                };
-            }
-            return f;
-        });
-        await orgDocRef.update({ folders: updatedFolders });
-    } else {
-        const updatedTriggers = organization.triggers.filter(t => t.id !== triggerId);
-        await orgDocRef.update({ triggers: updatedTriggers });
-    }
+    await triggerRef.delete();
 
     return new NextResponse(null, { status: 204 });
 });

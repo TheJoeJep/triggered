@@ -26,18 +26,26 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { UpgradeDialog } from "@/components/upgrade-dialog";
 import { PLAN_LIMITS } from "@/lib/constants";
+import { TeamManagementDialog } from "./team-management-dialog";
+import { useAuth } from "@/hooks/use-auth";
 
 export function WebhookDashboard() {
-  const { selectedOrganization, loading, addTriggerToFolder, addTriggerToOrganization, updateTrigger, deleteTrigger, updateTriggerStatus, testTrigger, resetTrigger } = useOrganizations();
+  const { selectedOrganization, loading, addTriggerToFolder, addTriggerToOrganization, updateTrigger, deleteTrigger, updateTriggerStatus, testTrigger, resetTrigger, addMember, removeMember, updateMemberRole } = useOrganizations();
   const { selectedFolderId, setSelectedFolderId } = useSelectedFolder();
+  const { user } = useAuth();
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isTeamOpen, setIsTeamOpen] = useState(false);
   const [selectedTrigger, setSelectedTrigger] = useState<Trigger | null>(null);
+  const [historyTrigger, setHistoryTrigger] = useState<Trigger | null>(null);
   const [highlightedTriggerId, setHighlightedTriggerId] = useState<string | null>(null);
-  const [historyLogs, setHistoryLogs] = useState<ExecutionLog[]>([]);
+  const [historyLogs, setHistoryLogs] = useState<ExecutionLog[]>([]); // Helper for legacy or fallback
   const { toast } = useToast();
+
+  // New state for duplicate mode
+  const [isDuplicateMode, setIsDuplicateMode] = useState(false);
 
   const folders = selectedOrganization?.folders || [];
   const topLevelTriggers = selectedOrganization?.triggers || [];
@@ -56,9 +64,8 @@ export function WebhookDashboard() {
       const interval = setInterval(() => {
         fetch('/api/cron')
           .then(res => res.json())
-          .then(data => console.log('[DEV-POLLER] Cron triggered:', data))
-          .catch(err => console.error('[DEV-POLLER] Cron trigger failed:', err));
-      }, 10000); // Poll every 10 seconds
+          .catch(err => console.error("Cron poll error", err));
+      }, 60000); // Poll every minute
 
       return () => clearInterval(interval);
     }
@@ -81,24 +88,50 @@ export function WebhookDashboard() {
     }
 
     const currentPlan = selectedOrganization?.planId || 'free';
-    const limit = PLAN_LIMITS[currentPlan].triggers;
+    const limits = PLAN_LIMITS[currentPlan];
 
     // Calculate total triggers (top-level + inside folders)
     const totalTriggers = (selectedOrganization?.triggers?.length || 0) +
       (selectedOrganization?.folders?.reduce((acc, folder) => acc + folder.triggers.length, 0) || 0);
 
-    if (totalTriggers >= limit) {
+    if (limits.triggers !== Infinity && totalTriggers >= limits.triggers) {
       setShowUpgradeDialog(true);
       return;
     }
 
     setSelectedTrigger(null);
+    setIsDuplicateMode(false);
+    setIsSheetOpen(true);
+  };
+
+  const handleDuplicate = (trigger: Trigger) => {
+    if (!canCreateTriggers) return;
+
+    const currentPlan = selectedOrganization?.planId || 'free';
+    const limits = PLAN_LIMITS[currentPlan];
+
+    // Calculate total triggers (top-level + inside folders)
+    const totalTriggers = (selectedOrganization?.triggers?.length || 0) +
+      (selectedOrganization?.folders?.reduce((acc, folder) => acc + folder.triggers.length, 0) || 0);
+
+    if (limits.triggers !== Infinity && totalTriggers >= limits.triggers) {
+      setShowUpgradeDialog(true);
+      return;
+    }
+
+    setSelectedTrigger({ ...trigger, name: `Copy of ${trigger.name}` });
+    setIsDuplicateMode(true);
     setIsSheetOpen(true);
   };
 
   const handleEdit = (trigger: Trigger) => {
     setSelectedTrigger(trigger);
+    setIsDuplicateMode(false);
     setIsSheetOpen(true);
+  };
+
+  const handleManageTeam = () => {
+    setIsTeamOpen(true);
   };
 
   const handleRowClick = (trigger: Trigger) => {
@@ -112,6 +145,7 @@ export function WebhookDashboard() {
   };
 
   const handleShowHistory = (trigger: Trigger) => {
+    setHistoryTrigger(trigger);
     setHistoryLogs(trigger.executionHistory || []);
     setIsHistoryOpen(true);
   }
@@ -133,7 +167,7 @@ export function WebhookDashboard() {
     if (!selectedOrganization) return;
 
     try {
-      if (id) {
+      if (id && !isDuplicateMode) {
         // Editing is simpler - we assume folder doesn't change.
         // A more complex implementation could handle moving triggers between folders.
         await updateTrigger(folderId, id, triggerData);
@@ -153,6 +187,7 @@ export function WebhookDashboard() {
         });
       }
       setIsSheetOpen(false);
+      setIsDuplicateMode(false);
     } catch (error: any) {
       console.error("Failed to save trigger:", error);
       toast({
@@ -235,7 +270,7 @@ export function WebhookDashboard() {
                 <h2 className="text-2xl font-bold tracking-tight font-headline text-white">{viewName}</h2>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline">
+                <Button variant="outline" onClick={handleManageTeam}>
                   <Users className="mr-2 h-4 w-4" />
                   Manage Team
                 </Button>
@@ -301,6 +336,7 @@ export function WebhookDashboard() {
                     selectedTriggerId={highlightedTriggerId}
                     onRowClick={handleRowClick}
                     onEdit={handleEdit}
+                    onDuplicate={handleDuplicate}
                     onDelete={handleDelete}
                     onStatusChange={handleStatusChange}
                     onTest={handleTest}
@@ -326,6 +362,7 @@ export function WebhookDashboard() {
           if (!isOpen) {
             // Clear selection when sheet closes
             setHighlightedTriggerId(null);
+            setIsDuplicateMode(false);
           }
         }}
         onSave={handleSave}
@@ -336,7 +373,9 @@ export function WebhookDashboard() {
       <ExecutionHistoryDialog
         isOpen={isHistoryOpen}
         onOpenChange={setIsHistoryOpen}
-        logs={historyLogs}
+        triggerId={historyTrigger?.id || null}
+        organizationId={selectedOrganization?.id}
+        initialLogs={historyTrigger?.executionHistory || []}
       />
       <UpgradeDialog
         open={showUpgradeDialog}
@@ -344,6 +383,17 @@ export function WebhookDashboard() {
         title="Trigger Limit Reached"
         description={`You have reached the maximum number of triggers (${PLAN_LIMITS[selectedOrganization?.planId || 'free'].triggers}) for your current plan. Upgrade to create more.`}
       />
+      {selectedOrganization && (
+        <TeamManagementDialog
+          isOpen={isTeamOpen}
+          onOpenChange={setIsTeamOpen}
+          organization={selectedOrganization}
+          onAddMember={addMember}
+          onRemoveMember={removeMember}
+          onUpdateRole={updateMemberRole}
+          currentUserId={user?.uid}
+        />
+      )}
     </>
   );
 }

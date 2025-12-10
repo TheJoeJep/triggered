@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db, auth } from '@/lib/firebase-admin';
 import { PLAN_LIMITS } from '@/lib/constants';
-import { Trigger, Organization } from '@/lib/types';
+import { Trigger, Organization, Schedule } from '@/lib/types';
 import { getIntervalInMinutes, calculateMinNextRun } from '@/lib/trigger-utils';
 import { z } from 'zod';
 
@@ -43,69 +43,65 @@ export async function POST(req: Request) {
 
         const { folderId, orgId, ...triggerData } = validation.data;
 
+        // Transaction is less critical here for count, but we need to check org membership.
+        // We'll trust the count query.
+
         const orgRef = db.collection('organizations').doc(orgId);
+        const orgDoc = await orgRef.get();
 
-        await db.runTransaction(async (transaction) => {
-            const orgDoc = await transaction.get(orgRef);
-            if (!orgDoc.exists) throw new Error("Organization not found");
+        if (!orgDoc.exists) throw new Error("Organization not found");
+        const orgData = orgDoc.data() as Organization;
 
-            const orgData = orgDoc.data() as Organization;
+        if (!orgData.memberUids.includes(uid)) {
+            throw new Error("Unauthorized access to organization");
+        }
 
-            if (!orgData.memberUids.includes(uid)) {
-                throw new Error("Unauthorized access to organization");
-            }
+        const planId = orgData.planId || 'free';
+        const limits = PLAN_LIMITS[planId];
 
-            const planId = orgData.planId || 'free';
-            const limits = PLAN_LIMITS[planId];
+        const triggersRef = orgRef.collection('triggers');
+        const countSnapshot = await triggersRef.count().get();
+        const currentCount = countSnapshot.data().count;
 
-            const currentTriggers = orgData.triggers || [];
-            const currentFolders = orgData.folders || [];
-            const currentCount = currentTriggers.length + currentFolders.reduce((acc, f) => acc + (f.triggers?.length || 0), 0);
+        if (currentCount >= limits.triggers) {
+            throw new Error(`LIMIT_REACHED: Plan limit reached (${limits.triggers})`);
+        }
 
-            if (currentCount >= limits.triggers) {
-                throw new Error(`LIMIT_REACHED: Plan limit reached (${limits.triggers})`);
-            }
+        let finalSchedule: Schedule = triggerData.schedule as any;
+        if ((triggerData.schedule as any).type === 'daily') {
+            finalSchedule = { type: 'interval', amount: 1, unit: 'days' };
+        }
 
-            if (triggerData.schedule.type === 'interval') {
-                if (triggerData.schedule.amount && triggerData.schedule.unit) {
-                    const interval = getIntervalInMinutes(triggerData.schedule.amount, triggerData.schedule.unit);
-                    if (interval < limits.minIntervalMinutes) {
-                        throw new Error(`INVALID_INTERVAL: Minimum interval is ${limits.minIntervalMinutes} minutes`);
-                    }
+        if (finalSchedule.type === 'interval') {
+            if (finalSchedule.amount && finalSchedule.unit) {
+                const interval = getIntervalInMinutes(finalSchedule.amount, finalSchedule.unit);
+                if (interval < limits.minIntervalMinutes) {
+                    throw new Error(`INVALID_INTERVAL: Minimum interval is ${limits.minIntervalMinutes} minutes`);
                 }
             }
+        }
 
-            const newTrigger: Trigger = {
-                ...triggerData,
-                id: `trigger-${Date.now()}`,
-                status: 'active',
-                runCount: 0,
-                executionHistory: [],
-            } as Trigger;
+        const newTrigger: Trigger = {
+            ...triggerData,
+            schedule: finalSchedule,
+            id: `trigger-${Date.now()}`,
+            status: 'active',
+            runCount: 0,
+            executionHistory: [],
+            orgId: orgId,
+            folderId: folderId || null
+        } as Trigger;
 
-            let updatedFolders = currentFolders;
-            let updatedTriggers = currentTriggers;
+        // Auto-generate ID or use one we set? Firestore 'add' generates one.
+        // But we want to use our ID if we generated it, or let firestore generate it.
+        // The type expects 'id'.
+        // Let's use Firestore ID.
+        const newTriggerRef = triggersRef.doc();
+        newTrigger.id = newTriggerRef.id;
 
-            if (folderId) {
-                updatedFolders = currentFolders.map(f => {
-                    if (f.id === folderId) {
-                        return { ...f, triggers: [...f.triggers, newTrigger] };
-                    }
-                    return f;
-                });
-                transaction.update(orgRef, { folders: updatedFolders });
-            } else {
-                updatedTriggers = [...currentTriggers, newTrigger];
-                transaction.update(orgRef, { triggers: updatedTriggers });
-            }
+        await newTriggerRef.set(newTrigger);
 
-            // Update minNextRun
-            const tempOrg = { ...orgData, folders: updatedFolders, triggers: updatedTriggers };
-            const newMin = calculateMinNextRun(tempOrg);
-            transaction.update(orgRef, { minNextRun: newMin || null });
-        });
-
-        return NextResponse.json({ success: true });
+        return NextResponse.json({ success: true, id: newTrigger.id });
 
     } catch (error: any) {
         console.error("Create Trigger Error:", error);
